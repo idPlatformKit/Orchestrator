@@ -1,0 +1,86 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: postgresdatabase-incluster
+spec:
+  compositeTypeRef:
+    apiVersion: database.idplatformkit.io/v1alpha1
+    kind: PostgresDatabase
+  mode: Pipeline
+  pipeline:
+    - step: compose
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        writeConnectionSecretToRef:
+          patches:
+            - type: FromCompositeFieldPath
+              fromFieldPath: spec.writeConnectionSecretToRef.name
+              toFieldPath: name
+        resources:
+          # The app role. provider-sql auto-generates its password and
+          # writes it to writeConnectionSecretToRef; we never see or set it.
+          - name: role
+            base:
+              apiVersion: postgresql.sql.m.crossplane.io/v1alpha1
+              kind: Role
+              spec:
+                forProvider:
+                  privileges:
+                    login: true
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: postgres-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-role"
+            connectionDetails:
+              - name: username
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: username
+              - name: password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
+
+          # The logical database, owned by the role above so it gets full
+          # rights on everything it creates without a separate Grant.
+          - name: database
+            base:
+              apiVersion: postgresql.sql.m.crossplane.io/v1alpha1
+              kind: Database
+              spec:
+                forProvider: {}
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: postgres-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.owner
+            connectionDetails:
+              - name: dbname
+                type: FromFieldPath
+                fromFieldPath: metadata.name
+              - name: host
+                type: FromValue
+                value: postgres-server-postgresql.postgres-system.svc.cluster.local
+              - name: port
+                type: FromValue
+                value: "5432"
+    - step: ready
+      functionRef:
+        name: function-auto-ready

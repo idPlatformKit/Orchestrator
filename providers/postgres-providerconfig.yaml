@@ -1,0 +1,11 @@
+apiVersion: postgresql.sql.m.crossplane.io/v1alpha1
+kind: ClusterProviderConfig
+metadata:
+  name: postgres-local
+spec:
+  credentials:
+    source: PostgreSQLConnectionSecret
+    connectionSecretRef:
+      name: postgres-admin-conn
+      namespace: postgres-system
+  sslMode: disable

@@ -1,0 +1,8 @@
+# Bitnami "postgresql" chart values for the shared, local-dev-only Postgres
+# server that provider-sql manages logical databases/roles against.
+# Not for production use: single replica, default/ephemeral storage.
+architecture: standalone
+
+primary:
+  persistence:
+    enabled: false

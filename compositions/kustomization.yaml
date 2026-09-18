@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Add XRDs and Compositions here as they are added to the library.
+# This base is applied both by `make compositions-apply` (local/kind)
+# and by the ArgoCD Application used in the real bootstrap flow, so it
+# is the single source of truth for what gets installed either way.
+resources:
+  - postgres-database/xrd.yaml
+  - postgres-database/composition.yaml

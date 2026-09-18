@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Cluster-level prerequisites for the compositions/ library: the Crossplane
+# Provider/Functions and shared ProviderConfigs they need. Applied once,
+# before any composition or claim, by both the local (kind) flow and the
+# ArgoCD-driven flow.
+resources:
+  - provider-sql.yaml
+  - function-patch-and-transform.yaml
+  - function-auto-ready.yaml
+  - postgres-providerconfig.yaml
