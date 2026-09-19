@@ -1,0 +1,17 @@
+# Points at the local OpenBao server (see platform/openbao-server/values.yaml).
+# No shared/root-level kv Mount is declared here: each Tenant's Vault add-on
+# creates its own VaultNamespace, and a Mount/Policy scoped inside that
+# namespace (see compositions/tenant/composition.yaml) -- that's the actual
+# per-tenant isolation boundary, not a shared mount with path prefixes.
+apiVersion: vault.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: vault-local
+spec:
+  address: http://openbao.openbao-system.svc.cluster.local:8200
+  credentials:
+    source: Secret
+    secretRef:
+      name: openbao-creds
+      namespace: openbao-system
+      key: credentials

@@ -1,0 +1,11 @@
+apiVersion: platform.idplatformkit.io/v1alpha1
+kind: Tenant
+metadata:
+  name: demo-team
+spec:
+  ownerGroup: demo-team-engineers
+  vault:
+    enabled: true
+    # Not created by this composition -- create it yourself in the
+    # demo-team namespace before a pod needs to authenticate as it.
+    serviceAccountName: demo-app

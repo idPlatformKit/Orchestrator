@@ -1,0 +1,35 @@
+# Crossplane v2 composes native Kubernetes resources directly, but its
+# controller has no rights to manage them until granted explicitly. This
+# ClusterRole aggregates into Crossplane's own (via the
+# rbac.crossplane.io/aggregate-to-crossplane label) so the Tenant composition
+# can create/manage Namespaces, quotas, RBAC bindings and NetworkPolicies.
+#
+# This is a deliberate, meaningful permission grant: the platform engine gets
+# cluster-wide rights to create namespaces and RBAC bindings so that tenants
+# can self-service them. That's the expected cost of self-service tenancy,
+# not an oversight.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-tenant-native-resources
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "resourcequotas", "limitranges"]
+    verbs: ["*"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["*"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["*"]
+  # Kubernetes RBAC escalation prevention: creating a RoleBinding to a
+  # ClusterRole requires either holding a superset of that ClusterRole's own
+  # rules, or the "bind" verb on that specific ClusterRole. The Tenant
+  # composition only needs to bind the built-in "edit" ClusterRole, so grant
+  # that narrowly rather than mirroring all of "edit"'s (large) rule set.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: ["edit"]
+    verbs: ["bind"]
