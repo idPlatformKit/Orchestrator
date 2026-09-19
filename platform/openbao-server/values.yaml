@@ -1,0 +1,14 @@
+# OpenBao chart values for the shared, local-dev-only OpenBao server that
+# provider-vault manages per-tenant Namespaces/Mounts/Policies against.
+# OpenBao (not Vault) because it ships real Namespaces -- genuine per-tenant
+# isolation -- free in its community edition; Vault gates that behind
+# Enterprise.
+# Not for production use: dev mode (in-memory, auto-unsealed, fixed root
+# token), single replica, no sidecar injector.
+injector:
+  enabled: false
+
+server:
+  dev:
+    enabled: true
+    devRootToken: root-local-dev

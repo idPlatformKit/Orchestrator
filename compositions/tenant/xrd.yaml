@@ -1,0 +1,44 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: tenants.platform.idplatformkit.io
+spec:
+  group: platform.idplatformkit.io
+  scope: Cluster
+  names:
+    kind: Tenant
+    plural: tenants
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                ownerGroup:
+                  type: string
+                  description: >-
+                    Group bound to the `edit` ClusterRole in the tenant's
+                    namespace.
+                vault:
+                  type: object
+                  description: Optional Vault secrets space for this tenant.
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    serviceAccountName:
+                      type: string
+                      description: >-
+                        The only Kubernetes ServiceAccount (in this tenant's
+                        namespace) allowed to authenticate as this tenant's
+                        Vault policy. Not created by this composition -- the
+                        app team creates it when they deploy their workload.
+                  required:
+                    - serviceAccountName
+              required:
+                - ownerGroup

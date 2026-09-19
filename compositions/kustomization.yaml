@@ -8,3 +8,5 @@ kind: Kustomization
 resources:
   - postgres-database/xrd.yaml
   - postgres-database/composition.yaml
+  - tenant/xrd.yaml
+  - tenant/composition.yaml

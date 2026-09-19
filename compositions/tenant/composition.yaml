@@ -1,0 +1,319 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: tenant-incluster
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idplatformkit.io/v1alpha1
+    kind: Tenant
+  mode: Pipeline
+  pipeline:
+    - step: compose
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # --- always-on baseline ---
+          - name: namespace
+            base:
+              apiVersion: v1
+              kind: Namespace
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+            # Plain native resources have no Ready status condition to wait
+            # on -- consider them ready as soon as they're created.
+            readinessChecks:
+              - type: None
+
+          - name: resourcequota
+            base:
+              apiVersion: v1
+              kind: ResourceQuota
+              spec:
+                hard:
+                  requests.cpu: "4"
+                  requests.memory: 8Gi
+                  limits.cpu: "8"
+                  limits.memory: 16Gi
+                  pods: "20"
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+            readinessChecks:
+              - type: None
+
+          - name: limitrange
+            base:
+              apiVersion: v1
+              kind: LimitRange
+              spec:
+                limits:
+                  - type: Container
+                    default:
+                      cpu: "500m"
+                      memory: 512Mi
+                    defaultRequest:
+                      cpu: "100m"
+                      memory: 128Mi
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+            readinessChecks:
+              - type: None
+
+          - name: rolebinding
+            base:
+              apiVersion: rbac.authorization.k8s.io/v1
+              kind: RoleBinding
+              roleRef:
+                apiGroup: rbac.authorization.k8s.io
+                kind: ClusterRole
+                name: edit
+              subjects:
+                - apiGroup: rbac.authorization.k8s.io
+                  kind: Group
+                  name: placeholder
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.ownerGroup
+                toFieldPath: subjects[0].name
+            readinessChecks:
+              - type: None
+
+          - name: networkpolicy
+            base:
+              apiVersion: networking.k8s.io/v1
+              kind: NetworkPolicy
+              spec:
+                podSelector: {}
+                policyTypes:
+                  - Ingress
+                ingress:
+                  # Allow traffic only from other pods in the same namespace.
+                  - from:
+                      - podSelector: {}
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+            readinessChecks:
+              - type: None
+
+          # --- optional add-on, kept or dropped by the cel-filter step below ---
+          # A real Vault namespace per tenant (OpenBao ships this free; Vault
+          # gates it behind Enterprise) -- the actual isolation boundary,
+          # not a shared mount with per-tenant path prefixes.
+          - name: vault-namespace
+            base:
+              apiVersion: vault.vault.m.upbound.io/v1alpha1
+              kind: VaultNamespace
+              spec:
+                forProvider:
+                  path: placeholder
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.path
+
+          # A kv-v2 mount inside (not shared across) the tenant's namespace.
+          # managementPolicies excludes "Delete" -- deleting the parent
+          # vault-namespace above already recursively wipes everything
+          # inside it in Vault; if this tries to delete itself independently
+          # (e.g. the toggle flips off while the namespace is also going
+          # away, or after it's already gone) the call 404s ("namespace not
+          # found") and the provider doesn't treat that as success, so the
+          # resource gets stuck retrying forever. Skipping the Delete action
+          # avoids that ordering race -- the K8s object is just removed.
+          - name: vault-kv-mount
+            base:
+              apiVersion: vault.vault.m.upbound.io/v1alpha1
+              kind: Mount
+              spec:
+                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+                forProvider:
+                  namespace: placeholder
+                  path: secret
+                  type: kv-v2
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.namespace
+
+          # Full access to that mount -- no tenant-name prefix needed, the
+          # namespace itself is what scopes this. managementPolicies
+          # excludes "Delete" for the same reason as vault-kv-mount above.
+          - name: vault-policy
+            base:
+              apiVersion: vault.vault.m.upbound.io/v1alpha1
+              kind: Policy
+              spec:
+                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+                forProvider:
+                  namespace: placeholder
+                  name: tenant-access
+                  policy: |
+                    path "secret/data/*" {
+                      capabilities = ["create", "read", "update", "delete", "list"]
+                    }
+                    path "secret/metadata/*" {
+                      capabilities = ["list", "read", "delete"]
+                    }
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.namespace
+
+          # Kubernetes auth method, enabled inside the tenant's own Vault
+          # namespace (auth methods are namespace-scoped too). Lets one
+          # named ServiceAccount log in and receive the tenant's policy --
+          # the app team creates that ServiceAccount themselves; this only
+          # wires the trust relationship. managementPolicies excludes
+          # "Delete" for the same reason as vault-kv-mount/vault-policy.
+          - name: vault-k8s-auth-backend
+            base:
+              apiVersion: auth.vault.m.upbound.io/v1alpha1
+              kind: Backend
+              spec:
+                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+                forProvider:
+                  type: kubernetes
+                  path: kubernetes
+                  namespace: placeholder
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.namespace
+
+          - name: vault-k8s-auth-config
+            base:
+              apiVersion: kubernetes.vault.m.upbound.io/v1alpha1
+              kind: AuthBackendConfig
+              spec:
+                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+                forProvider:
+                  backend: kubernetes
+                  kubernetesHost: https://kubernetes.default.svc
+                  namespace: placeholder
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.namespace
+
+          - name: vault-k8s-auth-role
+            base:
+              apiVersion: kubernetes.vault.m.upbound.io/v1alpha1
+              kind: AuthBackendRole
+              spec:
+                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+                forProvider:
+                  backend: kubernetes
+                  roleName: tenant-access
+                  tokenPolicies:
+                    - tenant-access
+                  tokenTtl: 3600
+                  boundServiceAccountNames:
+                    - placeholder
+                  boundServiceAccountNamespaces:
+                    - placeholder
+                  namespace: placeholder
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.boundServiceAccountNamespaces[0]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.vault.serviceAccountName
+                toFieldPath: spec.forProvider.boundServiceAccountNames[0]
+
+    - step: filter-optional
+      functionRef:
+        name: function-cel-filter
+      input:
+        apiVersion: cel.fn.crossplane.io/v1beta1
+        kind: Filters
+        filters:
+          - name: vault-.*
+            expression: >-
+              has(observed.composite.resource.spec.vault) &&
+              observed.composite.resource.spec.vault.enabled
+
+    - step: ready
+      functionRef:
+        name: function-auto-ready
