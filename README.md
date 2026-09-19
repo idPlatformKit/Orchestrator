@@ -4,6 +4,8 @@ Orchestrator is a repository for installing the base Crossplane compositions for
 
 After the base compositions are installed, the instantiation and management of specific compositions will be handled in a separate repository.
 
+See [docs/architecture.md](docs/architecture.md) for how this repo is put together, and [docs/compositions/](docs/compositions/) for how each composition in the library works.
+
 ## Purpose
 
 - Provide a quick setup for base Crossplane compositions.
