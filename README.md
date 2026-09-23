@@ -1,83 +1,87 @@
-# Orchestrator
+# IdPlatformKit Orchestrator
 
-Orchestrator is a repository for installing the base Crossplane compositions for IdPlatformKit. This repository sets up foundational infrastructure components and will also include additional reusable compositions in the future.
+[![e2e](https://github.com/idPlatformKit/Orchestrator/actions/workflows/e2e.yaml/badge.svg)](https://github.com/idPlatformKit/Orchestrator/actions/workflows/e2e.yaml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Crossplane](https://img.shields.io/badge/Crossplane-v2.4-5b3fd9)](https://crossplane.io)
 
-After the base compositions are installed, the instantiation and management of specific compositions will be handled in a separate repository.
+**The self-service infrastructure layer of [IdPlatformKit](https://github.com/idPlatformKit)**, a reference Internal Developer Platform.
 
-See [docs/architecture.md](docs/architecture.md) for how this repo is put together, and [docs/compositions/](docs/compositions/) for how each composition in the library works.
+A development team declares *what* it needs in a few lines of YAML. Crossplane turns that into a secured, isolated environment:
 
-## Purpose
-
-- Provide a quick setup for base Crossplane compositions.
-- Include a library of reusable Crossplane compositions for future use.
-- Install and configure ArgoCD, which is used here only to install ArgoCD itself and to synchronize with the target repository containing the actual composition instances.
-
-## Key Points
-
-- **This repository does not manage application-specific compositions.**
-- **ArgoCD in this context is only used for its installation and for syncing with the target repo.**
-- **Future updates will add more reusable Crossplane compositions.**
-
-## Getting Started
-
-1. Clone this repository.
-2. Install Crossplane and ArgoCD using the provided manifests.
-3. Configure ArgoCD to sync with your target repository for composition instantiation.
-
-## Local Development (no GitOps)
-
-To try compositions from the [compositions/](compositions/) library without setting up ArgoCD, spin up a local [kind](https://kind.sigs.k8s.io/) cluster:
-
-```sh
-make local-up    # creates the kind cluster, installs Crossplane, applies compositions/
-make local-down  # tears the cluster down
+```yaml
+apiVersion: platform.idplatformkit.io/v1alpha1
+kind: Tenant
+metadata:
+  name: demo-team
+spec:
+  ownerGroup: demo-team-engineers   # gets `edit` on the namespace
+  vault:
+    enabled: true                   # dedicated, isolated OpenBao namespace
+    serviceAccountName: demo-app
 ```
 
-`compositions/` is a kustomize base used by both this local flow (`make compositions-apply`) and the ArgoCD-driven flow, so there is a single source of truth for what gets installed either way. Requires `kind`, `helm`, and `kubectl` on your PATH.
+→ a namespace with `ResourceQuota`, `LimitRange`, RBAC and a default-deny `NetworkPolicy`, plus its own secrets namespace, KV mount, policy and Kubernetes auth role in OpenBao.
 
-### Try the first composition: self-service Postgres database
+The whole thing runs **locally on kind in one command**, no cloud account needed.
 
-`compositions/postgres-database/` is a `PostgresDatabase` XRD + Composition that provisions a logical database (via [provider-sql](https://github.com/crossplane-contrib/provider-sql)) against a shared, in-cluster Postgres server — no cloud provider needed.
+## Quick start
 
-```sh
-make local-up                  # cluster + Crossplane + provider-sql + shared Postgres + compositions
-make try-postgres-database     # applies examples/postgres-database.yaml and prints the connection secret
-```
-
-### Try the second composition: self-service `Tenant`
-
-`compositions/tenant/` is a `Tenant` XRD + Composition that gives a team a namespace baseline (`ResourceQuota`, `LimitRange`, an `edit` `RoleBinding` for `spec.ownerGroup`, a default-deny `NetworkPolicy`) and, optionally, a real per-tenant Vault namespace (`spec.vault.enabled`, via [provider-vault](https://github.com/upbound/provider-vault) against a local [OpenBao](https://openbao.org/) server) — all under one claim. The optional piece is gated with `function-cel-filter`, not duplicated Compositions.
-
-OpenBao rather than Vault: Vault Community Edition gates real Namespaces (genuine per-tenant secrets isolation) behind Enterprise, while OpenBao — the Linux Foundation's open-source Vault fork — ships them free. Each tenant gets its own `VaultNamespace`, with its own `secret/` kv-v2 mount and policy inside it, not a shared mount with path prefixes.
+Requires `kind`, `helm` and `kubectl`.
 
 ```sh
-make local-up      # also brings up provider-vault + the shared local OpenBao server
-make try-tenant     # applies examples/tenant.yaml (vault.enabled: true) and shows what got created
+make local-up                # kind cluster + Crossplane + providers + shared Postgres & OpenBao + compositions
+make try-tenant              # create a Tenant and show everything it produced
+make try-postgres-database   # create a logical Postgres database and print its connection Secret
+make local-down              # clean up
 ```
 
-Toggle `spec.vault.enabled` in a `Tenant` claim on or off (and re-apply) to see the tenant's `VaultNamespace`/`Mount`/`Policy` get created or torn down while the namespace baseline stays untouched — that's the mechanism future add-ons (e.g. nesting `PostgresDatabase` into a `Tenant`) will reuse.
+## Composition library
 
-#### Accessing a tenant's Vault namespace
+| Composition | Scope | What a team gets | Docs |
+|---|---|---|---|
+| `Tenant` | Cluster | Namespace baseline (quota, limits, RBAC, default-deny network) + optional isolated OpenBao namespace | [tenant.md](docs/compositions/tenant.md) |
+| `PostgresDatabase` | Namespaced | Logical database + role, connection details delivered as a Secret | [postgres-database.md](docs/compositions/postgres-database.md) |
 
-`spec.vault.serviceAccountName` (required whenever `spec.vault` is set) names the **one** Kubernetes ServiceAccount, in the tenant's own namespace, allowed to authenticate as that tenant. The composition wires the trust relationship only — it doesn't create that ServiceAccount; create it yourself alongside your workload:
+## Design choices worth knowing
 
-```sh
-kubectl create serviceaccount <name> -n <tenant>
-```
+- **Crossplane v2**: namespaced XRs and native Kubernetes resources composed directly, no `provider-kubernetes`.
+- **OpenBao instead of Vault**: real per-tenant Namespaces are free in OpenBao, Enterprise-only in Vault. Each tenant gets genuine isolation, not path prefixes on a shared mount.
+- **Optional features without duplicated Compositions**: the Vault add-on is toggled with `function-cel-filter`.
+- **One source of truth**: `compositions/` is a kustomize base shared by the local flow and the (upcoming) GitOps flow.
 
-A pod running as that ServiceAccount logs in with its own projected token and gets back a token scoped to the tenant's policy:
+Full rationale in [docs/architecture.md](docs/architecture.md).
 
-```sh
-JWT=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-curl -s --request POST \
-  --header "X-Vault-Namespace: <tenant>" \
-  --data "{\"role\": \"tenant-access\", \"jwt\": \"$JWT\"}" \
-  http://openbao.openbao-system.svc.cluster.local:8200/v1/auth/kubernetes/login
-```
+## Status
 
-Any other ServiceAccount gets `"service account name not authorized"`. This Kubernetes-auth-to-policy path is also the prerequisite for a later goal: pulling these secrets into Kubernetes `Secret`s per tenant via [External Secrets Operator](https://external-secrets.io/) — ESO's Vault provider would authenticate the same way, against the same per-tenant role.
+- ✅ Local kind environment, end-to-end tested in CI
+- ✅ `Tenant` with optional OpenBao namespace
+- ✅ `PostgresDatabase`
+- 🚧 ArgoCD bootstrap + separate instances repo (GitOps flow)
+- 🚧 Backstage Software Template creating `Tenant` claims
 
-## Next Steps
+Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
-- Use your target repository to manage and instantiate specific Crossplane compositions.
-- Check back for new reusable compositions as they are added to this repository.
+## Roadmap
+
+1. **GitOps flow**: ArgoCD bootstrap and a public instances repository holding the claims.
+2. **Portal ↔ Orchestrator**: a [Backstage](https://github.com/idPlatformKit/portal) Software Template that opens a PR adding a `Tenant` claim.
+3. **Secrets delivery**: External Secrets Operator pulling each tenant's OpenBao secrets into Kubernetes `Secret`s.
+4. **Composition nesting**: `PostgresDatabase` provisioned from within a `Tenant`.
+5. **Guardrails**: Kyverno policies and per-tenant observability.
+
+Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/issues).
+
+## Part of IdPlatformKit
+
+| Repo | Role |
+|---|---|
+| [portal](https://github.com/idPlatformKit/portal) | Developer portal (Backstage, GitHub auth, org/group sync) |
+| **Orchestrator** | Platform orchestrator (Crossplane compositions) |
+
+Write-ups:
+- TODO_TITRE_ARTICLE_1 : TODO_LIEN_1
+- TODO_TITRE_ARTICLE_2 : TODO_LIEN_2
+
+## License
+
+[Apache 2.0](LICENSE)
