@@ -1,0 +1,42 @@
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, catches upstream chart/image breakage
+
+jobs:
+  kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kind (cluster is created by the Makefile)
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - uses: azure/setup-helm@v4
+
+      - name: Bootstrap the platform
+        run: make local-up
+
+      - name: Tenant composition
+        run: make try-tenant
+
+      - name: PostgresDatabase composition
+        run: make try-postgres-database
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          kubectl get providers,functions -o wide || true
+          kubectl get composite,managed -A || true
+          kubectl describe -f examples/tenant.yaml || true
+          kubectl describe -f examples/postgres-database.yaml || true
+          kubectl get pods -A || true
+          kubectl logs -n crossplane-system deploy/crossplane --tail=200 || true
