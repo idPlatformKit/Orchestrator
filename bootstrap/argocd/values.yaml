@@ -34,30 +34,34 @@ configs:
     # Argo CD ships health checks for Crossplane's own API groups
     # (*.crossplane.io, *.upbound.io) but knows nothing about ours, so a
     # Tenant or PostgresDatabase would show Healthy the moment it is
-    # created. Map the XR's Synced/Ready conditions instead.
-    resource.customizations.health.platform.idplatformkit.io_*: &xr-health |
-      hs = {}
-      hs.status = "Progressing"
-      hs.message = "Waiting for Crossplane to reconcile"
-      if obj.status == nil or obj.status.conditions == nil then
-        return hs
-      end
-      for _, c in ipairs(obj.status.conditions) do
-        if c.type == "Synced" and c.status == "False" then
-          hs.status = "Degraded"
-          hs.message = c.message or c.reason
-          return hs
-        end
-      end
-      for _, c in ipairs(obj.status.conditions) do
-        if c.type == "Ready" then
-          if c.status == "True" then
-            hs.status = "Healthy"
-            hs.message = "Resource is ready"
-          else
-            hs.message = c.message or c.reason or hs.message
+    # created. Map the XR's Synced/Ready conditions instead, for every
+    # kind under *.idplatformkit.io. Wildcards need this single-key block
+    # format: a ConfigMap key can't contain "*", so the split
+    # resource.customizations.health.<group>_<kind> keys can't express it.
+    resource.customizations: |
+      "*.idplatformkit.io/*":
+        health.lua: |
+          hs = {}
+          hs.status = "Progressing"
+          hs.message = "Waiting for Crossplane to reconcile"
+          if obj.status == nil or obj.status.conditions == nil then
+            return hs
           end
-        end
-      end
-      return hs
-    resource.customizations.health.database.idplatformkit.io_*: *xr-health
+          for _, c in ipairs(obj.status.conditions) do
+            if c.type == "Synced" and c.status == "False" then
+              hs.status = "Degraded"
+              hs.message = c.message or c.reason
+              return hs
+            end
+          end
+          for _, c in ipairs(obj.status.conditions) do
+            if c.type == "Ready" then
+              if c.status == "True" then
+                hs.status = "Healthy"
+                hs.message = "Resource is ready"
+              else
+                hs.message = c.message or c.reason or hs.message
+              end
+            end
+          end
+          return hs
