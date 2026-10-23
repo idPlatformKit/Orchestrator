@@ -1,6 +1,6 @@
 # GitOps bootstrap (Argo CD)
 
-`make local-up-gitops` reaches the same end state as `make local-up` (Crossplane, providers, functions, the shared Postgres and OpenBao servers, the composition library), but only Argo CD and a few bootstrap Secrets are installed by hand. Argo CD installs everything else from this repository, and keeps it in sync.
+`make local-up-gitops` reaches the same end state as `make local-up` (Crossplane, providers, functions, the shared Postgres and OpenBao servers, the composition library), but only Argo CD and a few bootstrap Secrets are installed by hand. Argo CD installs everything else from this repository and keeps it in sync. It then provisions the claims declared in the separate [instances](https://github.com/idPlatformKit/instances) repository.
 
 ```sh
 make local-up-gitops                                 # tracks main
@@ -37,6 +37,7 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | -1 | `postgres-server`, `openbao-server` | Upstream Helm charts + `platform/*/values.yaml` from this repo |
 | 0 | `providers` | `providers/` kustomize base |
 | 1 | `compositions` | `compositions/` kustomize base |
+| 2 | `instances` | The [instances](https://github.com/idPlatformKit/instances) repository: `Tenant` and `PostgresDatabase` claims |
 
 Chart versions are pinned in `bootstrap/apps/values.yaml` and in the Makefile (`CROSSPLANE_VERSION`, `POSTGRES_CHART_VERSION`, `OPENBAO_CHART_VERSION`). Keep both in sync.
 
@@ -74,8 +75,24 @@ The `providers` app goes `Degraded` for one retry cycle, then the retry (10s bac
 
 **Self-heal works on Crossplane objects.** Deleting the `tenant-incluster` Composition by hand: Argo CD had recreated it when checked 30 seconds later and the `compositions` app stayed `Synced`. No `ignoreDifferences` was needed for the Crossplane `Provider`, `Function`, XRD or Composition objects: none of them showed up as drifted.
 
+## Claims from the instances repository
+
+The `instances` Application syncs [idPlatformKit/instances](https://github.com/idPlatformKit/instances) (`main`) with `prune` and `selfHeal`. That repository validates every claim against this repo's XRDs in CI (`crossplane resource validate`), so a broken claim is caught in the pull request, before Argo CD sees it. Its location is set in `bootstrap/apps/values.yaml` (`instances.repoURL`, `instances.targetRevision`).
+
+What was observed on a fresh kind cluster with the `checkout` example claims (a `Tenant` and a `PostgresDatabase` in the `checkout` namespace):
+
+**Argo CD doesn't know when a claim is ready.** It ships health checks for Crossplane's own API groups (`*.crossplane.io`, `*.upbound.io`), not for ours, so a `Tenant` would show `Healthy` as soon as the object existed. `bootstrap/argocd/values.yaml` adds a health check for `*.idplatformkit.io/*` that maps the XR's `Synced`/`Ready` conditions. With it, the `instances` app stayed `Progressing` for about 90 seconds, until Crossplane reported the `Tenant` `Ready` (the OpenBao resources take the longest). Only then did the root app go `Healthy`.
+
+**First attempt: a wildcard in the split key format.** `resource.customizations.health.platform.idplatformkit.io_*` was rejected by the API server when installing Argo CD: a ConfigMap key must match `[-._a-zA-Z0-9]+`, so `*` is not allowed. Wildcards only work in the older single-key `resource.customizations` block, which is also the format Crossplane's docs use for `*.upbound.io/*`.
+
+**The `PostgresDatabase` lands before its namespace exists.** The `checkout` namespace is created by Crossplane from the `Tenant`, not by Argo CD. The dry run passed, but the first apply failed with `namespaces "checkout" not found`. The retry applied it about 20 seconds later. This is expected and self-resolving. Nesting `PostgresDatabase` inside `Tenant` (on the roadmap) removes the ordering problem altogether.
+
+**Self-heal applies to claims too.** Patching the `Tenant`'s `ownerGroup` by hand: Argo CD had reverted it 25 seconds later, and the namespace's `RoleBinding` still pointed at `checkout-engineers`.
+
+**Not tested yet: prune.** Removing a claim from the instances repository should delete the resource and, for a `Tenant`, its whole namespace. That's the intended GitOps behaviour, but it hasn't been exercised end to end here yet.
+
 ## Scope and limits
 
 - Argo CD itself is installed by Helm and doesn't manage itself yet.
-- The claims (`Tenant`, `PostgresDatabase`) don't come from Git yet. The next step is a separate, public instances repository synced by its own Application (see the [roadmap](../README.md#roadmap)).
+- Claims are added by hand-written pull requests to the instances repository for now. A Backstage Software Template opening those pull requests is the next step (see the [roadmap](../README.md#roadmap)).
 - Same caveat as the local flow: dev-mode, single-replica backing services with fixed credentials. A reference setup, not a production one.
