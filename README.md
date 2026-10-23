@@ -35,6 +35,14 @@ make try-postgres-database   # create a logical Postgres database and print its 
 make local-down              # clean up
 ```
 
+Or let Argo CD install the same thing from this repo, the GitOps way:
+
+```sh
+make local-up-gitops         # kind + Argo CD, which syncs Crossplane, providers, shared services and compositions
+```
+
+See [docs/gitops.md](docs/gitops.md).
+
 ## Composition library
 
 | Composition | Scope | What a team gets | Docs |
@@ -47,7 +55,7 @@ make local-down              # clean up
 - **Crossplane v2**: namespaced XRs and native Kubernetes resources composed directly, no `provider-kubernetes`.
 - **OpenBao instead of Vault**: real per-tenant Namespaces are free in OpenBao, Enterprise-only in Vault. Each tenant gets genuine isolation, not path prefixes on a shared mount.
 - **Optional features without duplicated Compositions**: the Vault add-on is toggled with `function-cel-filter`.
-- **One source of truth**: `compositions/` is a kustomize base shared by the local flow and the (upcoming) GitOps flow.
+- **One source of truth**: `providers/` and `compositions/` are kustomize bases shared by the local flow and the Argo CD flow.
 
 Full rationale in [docs/architecture.md](docs/architecture.md).
 
@@ -56,14 +64,15 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ Local kind environment, end-to-end tested in CI
 - ✅ `Tenant` with optional OpenBao namespace
 - ✅ `PostgresDatabase`
-- 🚧 ArgoCD bootstrap + separate instances repo (GitOps flow)
+- ✅ Argo CD bootstrap (app of apps), end-to-end tested in CI
+- 🚧 Separate instances repo holding the claims, synced by Argo CD
 - 🚧 Backstage Software Template creating `Tenant` claims
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
 ## Roadmap
 
-1. **GitOps flow**: ArgoCD bootstrap and a public instances repository holding the claims.
+1. **GitOps flow**: a public instances repository holding the claims, synced by Argo CD (the Argo CD bootstrap itself is done).
 2. **Portal ↔ Orchestrator**: a [Backstage](https://github.com/idPlatformKit/portal) Software Template that opens a PR adding a `Tenant` claim.
 3. **Secrets delivery**: External Secrets Operator pulling each tenant's OpenBao secrets into Kubernetes `Secret`s.
 4. **Composition nesting**: `PostgresDatabase` provisioned from within a `Tenant`.

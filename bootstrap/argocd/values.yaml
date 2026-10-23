@@ -1,0 +1,32 @@
+# Argo CD chart values for the local GitOps bootstrap (see docs/gitops.md).
+# Minimal on purpose: no Dex/SSO, no notifications, admin login only.
+# Not for production use.
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+configs:
+  cm:
+    # Argo CD stopped assessing the health of Application resources in 1.8,
+    # so out of the box an app-of-apps does NOT wait for a child app to be
+    # Healthy before moving to the next sync wave -- it only waits for the
+    # Application object to exist. Restoring this check is what makes the
+    # sync waves in bootstrap/apps/ actually order the install.
+    # A child app that hasn't synced yet reports "Missing"; Argo CD doesn't
+    # count Missing against the parent's health, so the root app went
+    # Healthy before the last wave was installed. Report it as Progressing.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil and obj.status.health ~= nil then
+        if obj.status.health.status ~= "Missing" then
+          hs.status = obj.status.health.status
+        end
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+      return hs

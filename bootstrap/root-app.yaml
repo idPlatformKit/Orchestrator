@@ -1,0 +1,26 @@
+# The only object applied by hand (`make gitops-root-apply`). Everything
+# else is an Argo CD Application rendered from bootstrap/apps/ -- the
+# "app of apps" pattern. repoURL/targetRevision are overridable from the
+# Makefile (GITOPS_REPO_URL, GITOPS_REVISION) to test a branch.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/idPlatformKit/Orchestrator.git
+    targetRevision: main
+    path: bootstrap/apps
+    helm:
+      valuesObject:
+        repoURL: https://github.com/idPlatformKit/Orchestrator.git
+        targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

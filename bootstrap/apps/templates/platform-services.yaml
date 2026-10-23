@@ -1,0 +1,63 @@
+# Wave -1: shared, local-dev-only backing services. Chart from upstream,
+# values from this repo (platform/*/values.yaml), the same files the local
+# Makefile flow uses. Their credentials are NOT in Git: the bootstrap
+# Secrets are created by `make bootstrap-secrets` before Argo CD syncs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres-server
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  sources:
+    - repoURL: https://charts.bitnami.com/bitnami
+      chart: postgresql
+      targetRevision: {{ .Values.charts.postgresql | quote }}
+      helm:
+        releaseName: postgres-server
+        valueFiles:
+          - $values/platform/postgres-server/values.yaml
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: postgres-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openbao-server
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  sources:
+    - repoURL: https://openbao.github.io/openbao-helm
+      chart: openbao
+      targetRevision: {{ .Values.charts.openbao | quote }}
+      helm:
+        releaseName: openbao
+        valueFiles:
+          - $values/platform/openbao-server/values.yaml
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openbao-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
