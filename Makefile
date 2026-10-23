@@ -179,9 +179,13 @@ gitops-root-apply:
 
 # Waits on the root app only: with the Application health check restored in
 # bootstrap/argocd/values.yaml, it is Healthy once every child app is.
+# Sync first: right after creation the root app has no resources yet and
+# reports Healthy before it has synced anything.
 gitops-wait:
 	kubectl wait application/platform -n $(ARGOCD_NAMESPACE) \
-		--for=jsonpath='{.status.health.status}'=Healthy --timeout=900s
+		--for=jsonpath='{.status.sync.status}'=Synced --timeout=900s
+	kubectl wait application/platform -n $(ARGOCD_NAMESPACE) \
+		--for=jsonpath='{.status.health.status}'=Healthy --timeout=600s
 	kubectl get applications -n $(ARGOCD_NAMESPACE)
 
 local-up-gitops: kind-up argocd-install bootstrap-secrets gitops-root-apply gitops-wait
