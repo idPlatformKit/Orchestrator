@@ -1,0 +1,29 @@
+# Argo CD chart values for the local GitOps bootstrap (see docs/gitops.md).
+# Minimal on purpose: no Dex/SSO, no notifications, admin login only.
+# Not for production use.
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+configs:
+  cm:
+    # Argo CD stopped assessing the health of Application resources in 1.8,
+    # so out of the box an app-of-apps does NOT wait for a child app to be
+    # Healthy before moving to the next sync wave -- it only waits for the
+    # Application object to exist. Restoring this check is what makes the
+    # sync waves in bootstrap/apps/ actually order the install.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs

@@ -1,6 +1,10 @@
 CLUSTER_NAME ?= idplatformkit-local
 CROSSPLANE_NAMESPACE ?= crossplane-system
 CROSSPLANE_VERSION ?= 2.4.0
+# Chart versions: keep in sync with bootstrap/apps/values.yaml so the local
+# and GitOps flows install the same thing.
+POSTGRES_CHART_VERSION ?= 18.12.15
+OPENBAO_CHART_VERSION ?= 0.30.4
 
 POSTGRES_NAMESPACE ?= postgres-system
 POSTGRES_RELEASE ?= postgres-server
@@ -10,12 +14,19 @@ OPENBAO_NAMESPACE ?= openbao-system
 OPENBAO_RELEASE ?= openbao
 OPENBAO_DEV_ROOT_TOKEN ?= root-local-dev
 
+ARGOCD_NAMESPACE ?= argocd
+ARGOCD_CHART_VERSION ?= 10.11.1
+GITOPS_REPO_URL ?= https://github.com/idPlatformKit/Orchestrator.git
+GITOPS_REVISION ?= main
+
 .PHONY: kind-up kind-down crossplane-install crossplane-uninstall \
 	providers-apply openbao-providerconfig-apply \
 	postgres-server-install postgres-server-uninstall \
 	openbao-server-install openbao-server-uninstall \
 	compositions-apply compositions-delete \
-	try-postgres-database try-tenant local-up local-down
+	try-postgres-database try-tenant local-up local-down \
+	postgres-bootstrap-secrets openbao-bootstrap-secrets bootstrap-secrets \
+	argocd-install gitops-root-apply gitops-wait local-up-gitops
 
 kind-up:
 	kind create cluster --name $(CLUSTER_NAME) --config local/kind-config.yaml
@@ -67,15 +78,25 @@ openbao-providerconfig-apply:
 
 # Shared, local-dev-only Postgres server that provider-sql manages logical
 # databases/roles against (see platform/postgres-server/values.yaml).
-postgres-server-install:
-	kubectl create namespace $(POSTGRES_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+postgres-server-install: postgres-bootstrap-secrets
 	helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
 	helm repo update bitnami
 	helm upgrade --install $(POSTGRES_RELEASE) bitnami/postgresql \
 		--namespace $(POSTGRES_NAMESPACE) \
+		--version $(POSTGRES_CHART_VERSION) \
 		--values platform/postgres-server/values.yaml \
-		--set auth.postgresPassword=$(POSTGRES_ADMIN_PASSWORD) \
 		--wait
+
+# Dev-default credentials, created imperatively so they never sit in Git:
+# the admin password the chart reads (auth.existingSecret), and the
+# connection Secret provider-sql's ClusterProviderConfig reads. Shared by
+# the local and GitOps flows.
+postgres-bootstrap-secrets:
+	kubectl create namespace $(POSTGRES_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create secret generic postgres-server-auth \
+		--namespace $(POSTGRES_NAMESPACE) \
+		--from-literal=postgres-password=$(POSTGRES_ADMIN_PASSWORD) \
+		--dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret generic postgres-admin-conn \
 		--namespace $(POSTGRES_NAMESPACE) \
 		--from-literal=endpoint=$(POSTGRES_RELEASE)-postgresql.$(POSTGRES_NAMESPACE).svc.cluster.local \
@@ -90,15 +111,20 @@ postgres-server-uninstall:
 # Shared, local-dev-only OpenBao server (dev mode: in-memory, auto-unsealed,
 # fixed root token -- see platform/openbao-server/values.yaml) that
 # provider-vault manages per-tenant Namespaces/Mounts/Policies against.
-openbao-server-install:
-	kubectl create namespace $(OPENBAO_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+openbao-server-install: openbao-bootstrap-secrets
 	helm repo add openbao https://openbao.github.io/openbao-helm --force-update
 	helm repo update openbao
 	helm upgrade --install $(OPENBAO_RELEASE) openbao/openbao \
 		--namespace $(OPENBAO_NAMESPACE) \
+		--version $(OPENBAO_CHART_VERSION) \
 		--values platform/openbao-server/values.yaml \
 		--set server.dev.devRootToken=$(OPENBAO_DEV_ROOT_TOKEN) \
 		--wait
+
+# The token provider-vault's ClusterProviderConfig authenticates with. In
+# dev mode it is the fixed root token set in platform/openbao-server/values.yaml.
+openbao-bootstrap-secrets:
+	kubectl create namespace $(OPENBAO_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret generic openbao-creds \
 		--namespace $(OPENBAO_NAMESPACE) \
 		--from-literal=credentials='{"token_name":"orchestrator-local","token":"$(OPENBAO_DEV_ROOT_TOKEN)"}' \
@@ -127,6 +153,39 @@ try-tenant:
 
 local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply compositions-apply
 	@echo "Local cluster '$(CLUSTER_NAME)' is ready: Crossplane, provider-sql, provider-vault, the shared Postgres server, and the shared OpenBao server are installed, compositions applied."
+
+# --- GitOps flow (see docs/gitops.md) ---
+# Same end state as local-up, but only Argo CD and the bootstrap Secrets are
+# installed by hand; Argo CD installs everything else from this repo.
+
+bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets
+
+argocd-install:
+	helm repo add argo https://argoproj.github.io/argo-helm --force-update
+	helm repo update argo
+	helm upgrade --install argocd argo/argo-cd \
+		--namespace $(ARGOCD_NAMESPACE) \
+		--create-namespace \
+		--version $(ARGOCD_CHART_VERSION) \
+		--values bootstrap/argocd/values.yaml \
+		--wait
+
+# GITOPS_REPO_URL/GITOPS_REVISION let you point Argo CD at a fork or a
+# branch, e.g. `make local-up-gitops GITOPS_REVISION=my-branch`.
+gitops-root-apply:
+	sed -e 's|https://github.com/idPlatformKit/Orchestrator.git|$(GITOPS_REPO_URL)|' \
+		-e 's|targetRevision: main|targetRevision: $(GITOPS_REVISION)|' \
+		bootstrap/root-app.yaml | kubectl apply -f -
+
+# Waits on the root app only: with the Application health check restored in
+# bootstrap/argocd/values.yaml, it is Healthy once every child app is.
+gitops-wait:
+	kubectl wait application/platform -n $(ARGOCD_NAMESPACE) \
+		--for=jsonpath='{.status.health.status}'=Healthy --timeout=900s
+	kubectl get applications -n $(ARGOCD_NAMESPACE)
+
+local-up-gitops: kind-up argocd-install bootstrap-secrets gitops-root-apply gitops-wait
+	@echo "Local cluster '$(CLUSTER_NAME)' is ready, bootstrapped by Argo CD from $(GITOPS_REPO_URL)@$(GITOPS_REVISION)."
 
 local-down: kind-down
 	@echo "Local cluster '$(CLUSTER_NAME)' deleted."
