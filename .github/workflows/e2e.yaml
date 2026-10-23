@@ -73,6 +73,8 @@ jobs:
         run: |
           kubectl get applications -n argocd -o wide || true
           kubectl get applications -n argocd -o yaml || true
+          kubectl get events -n argocd --sort-by=.lastTimestamp || true
+          kubectl describe pods -n argocd || true
           kubectl get providers,functions -o wide || true
           kubectl get composite,managed -A || true
           kubectl get pods -A || true
