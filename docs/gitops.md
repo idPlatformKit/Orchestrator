@@ -54,7 +54,7 @@ This imperative step is the honest stopgap until secrets are delivered by a prop
 
 ## What was actually observed, gotchas included
 
-All of this was run on a fresh kind cluster with Argo CD chart 10.11.1 (Argo CD v3.5.6). From an empty cluster, every Application was `Synced`/`Healthy` about two minutes after the root app was applied. `make try-tenant` and `make try-postgres-database` then passed unchanged.
+All of this was run on a fresh kind cluster with Argo CD chart 10.11.1 (Argo CD v3.5.6). From an empty cluster, every Application was `Synced`/`Healthy` about 1.5 to 2 minutes after the root app was applied. `make try-tenant` and `make try-postgres-database` then passed unchanged.
 
 **Sync waves don't order child apps out of the box.** Since Argo CD 1.8 the health of an `Application` resource is no longer assessed, so a parent app only waits for a child Application *object* to exist, not for it to be healthy. `bootstrap/argocd/values.yaml` restores the health check (`resource.customizations.health.argoproj.io_Application`). Without it, the waves are cosmetic.
 
@@ -69,6 +69,8 @@ ensure CRDs are installed first
 The `providers` app goes `Degraded` for one retry cycle, then the retry (10s backoff) applies them once the Providers are healthy. This is expected and self-resolving. The local flow solves the same problem by applying the ProviderConfigs in a separate step (`providers-apply`).
 
 **The root app is `Healthy` before it has done anything.** Right after creation it has no resources, so it reports `Healthy` while still `OutOfSync`. The first version of `make gitops-wait` waited on health only and returned immediately with the cluster half-installed. It now waits for `Synced` first, then `Healthy`.
+
+**...and it was still `Healthy` one wave too early.** With that fixed, a second run printed `compositions OutOfSync Missing` next to a `Synced`/`Healthy` root. A child Application that hasn't synced yet reports `Missing`, and Argo CD doesn't count `Missing` against the parent's aggregated health. The first version of the health check passed the child's status through as-is. It now maps `Missing` to `Progressing`. A run polled every 5 seconds afterwards showed the waves in order (crossplane → shared services → providers → compositions), with the root only `Synced`/`Healthy` once `compositions` was. As a final guard, `make gitops-wait` also waits for every Application to be `Healthy`.
 
 **Self-heal works on Crossplane objects.** Deleting the `tenant-incluster` Composition by hand: Argo CD had recreated it when checked 30 seconds later and the `compositions` app stayed `Synced`. No `ignoreDifferences` was needed for the Crossplane `Provider`, `Function`, XRD or Composition objects: none of them showed up as drifted.
 
