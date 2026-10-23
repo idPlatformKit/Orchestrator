@@ -10,3 +10,9 @@ charts:
   crossplane: 2.4.0
   postgresql: 18.12.15
   openbao: 0.30.4
+
+# Where the claims (Tenant, PostgresDatabase, ...) live. Removing a claim
+# there deletes the resource: the instances Application prunes.
+instances:
+  repoURL: https://github.com/idPlatformKit/instances.git
+  targetRevision: main

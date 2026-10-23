@@ -38,7 +38,7 @@ make local-down              # clean up
 Or let Argo CD install the same thing from this repo, the GitOps way:
 
 ```sh
-make local-up-gitops         # kind + Argo CD, which syncs Crossplane, providers, shared services and compositions
+make local-up-gitops         # kind + Argo CD, which syncs the platform from this repo and the claims from idPlatformKit/instances
 ```
 
 See [docs/gitops.md](docs/gitops.md).
@@ -65,18 +65,17 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ `Tenant` with optional OpenBao namespace
 - ✅ `PostgresDatabase`
 - ✅ Argo CD bootstrap (app of apps), end-to-end tested in CI
-- 🚧 Separate instances repo holding the claims, synced by Argo CD
+- ✅ Claims synced by Argo CD from the [instances](https://github.com/idPlatformKit/instances) repository, validated in CI
 - 🚧 Backstage Software Template creating `Tenant` claims
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
 ## Roadmap
 
-1. **GitOps flow**: a public instances repository holding the claims, synced by Argo CD (the Argo CD bootstrap itself is done).
-2. **Portal ↔ Orchestrator**: a [Backstage](https://github.com/idPlatformKit/portal) Software Template that opens a PR adding a `Tenant` claim.
-3. **Secrets delivery**: External Secrets Operator pulling each tenant's OpenBao secrets into Kubernetes `Secret`s.
-4. **Composition nesting**: `PostgresDatabase` provisioned from within a `Tenant`.
-5. **Guardrails**: Kyverno policies and per-tenant observability.
+1. **Portal ↔ Orchestrator**: a [Backstage](https://github.com/idPlatformKit/portal) Software Template that opens a PR adding a `Tenant` claim.
+2. **Secrets delivery**: External Secrets Operator pulling each tenant's OpenBao secrets into Kubernetes `Secret`s.
+3. **Composition nesting**: `PostgresDatabase` provisioned from within a `Tenant`.
+4. **Guardrails**: Kyverno policies and per-tenant observability.
 
 Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/issues).
 
@@ -86,6 +85,7 @@ Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/is
 |---|---|
 | [portal](https://github.com/idPlatformKit/portal) | Developer portal (Backstage, GitHub auth, org/group sync) |
 | **Orchestrator** | Platform orchestrator (Crossplane compositions) |
+| [instances](https://github.com/idPlatformKit/instances) | Claims (`Tenant`, `PostgresDatabase`), synced by Argo CD |
 
 Write-ups:
 - TODO_TITRE_ARTICLE_1 : TODO_LIEN_1

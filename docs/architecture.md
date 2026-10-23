@@ -14,7 +14,7 @@ flowchart LR
 ```
 
 - **This repo**: installs Crossplane, the providers/functions Compositions need, and the reusable `XRD`/`Composition` pairs themselves.
-- **The target repo** (separate, not this one): creates the actual claims (`Tenant`, `PostgresDatabase`, ...) that instantiate infrastructure. Argo CD installs this repo's platform layer (Crossplane, providers, shared services, compositions) and will sync the claims from that target repo. The target repo doesn't exist yet.
+- **The target repo** (separate, not this one): creates the actual claims (`Tenant`, `PostgresDatabase`, ...) that instantiate infrastructure. Argo CD installs this repo's platform layer (Crossplane, providers, shared services, compositions) and syncs the claims from that target repo, [idPlatformKit/instances](https://github.com/idPlatformKit/instances).
 
 ## Two ways to install
 
@@ -101,6 +101,6 @@ Both follow the same shape: one shared backing service (Postgres / OpenBao) inst
 ## Non-goals / current limitations
 
 - No production hardening: both shared backing servers run in single-replica, dev/in-memory modes with fixed local credentials — fine for `kind`, not for a real cluster.
-- GitOps covers the platform layer only: Argo CD installs Crossplane, providers, shared services and compositions, but claims don't come from Git yet (the instances repo is the next step). Argo CD itself is installed by Helm, not self-managed, and the dev bootstrap Secrets are created imperatively (see [gitops.md](gitops.md)).
+- Argo CD installs the platform layer and syncs the claims from the instances repository, but claims are still written by hand there: no Backstage template yet. Argo CD itself is installed by Helm, not self-managed, and the dev bootstrap Secrets are created imperatively (see [gitops.md](gitops.md)).
 - `Tenant`'s Vault add-on stops at "the policy and auth role exist and a named ServiceAccount can use them" — it doesn't (yet) pull those secrets into Kubernetes `Secret`s. That's a deliberate stopping point: it's the direct prerequisite for a planned External Secrets Operator (ESO) integration, which would authenticate the same way.
 - `PostgresDatabase` is not (yet) composable *from* a `Tenant` claim (nested XR composition), even though Crossplane supports it — each composition is proven independently first.

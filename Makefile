@@ -160,6 +160,10 @@ local-up: kind-up crossplane-install providers-apply postgres-server-install ope
 
 bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets
 
+# --timeout 10m: helm's default 5m was hit twice in CI (PR #10) while the
+# kind node was still pulling Argo CD's images (redis ImagePullBackOff, then
+# argocd-redis-secret-init stuck in ContainerCreating). Same chart and images
+# pulled in seconds locally and in earlier CI runs: slow registries, not a bug.
 argocd-install:
 	helm repo add argo https://argoproj.github.io/argo-helm --force-update
 	helm repo update argo
@@ -168,7 +172,7 @@ argocd-install:
 		--create-namespace \
 		--version $(ARGOCD_CHART_VERSION) \
 		--values bootstrap/argocd/values.yaml \
-		--wait
+		--wait --timeout 10m
 
 # GITOPS_REPO_URL/GITOPS_REVISION let you point Argo CD at a fork or a
 # branch, e.g. `make local-up-gitops GITOPS_REVISION=my-branch`.
