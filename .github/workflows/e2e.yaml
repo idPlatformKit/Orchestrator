@@ -40,3 +40,40 @@ jobs:
           kubectl describe -f examples/postgres-database.yaml || true
           kubectl get pods -A || true
           kubectl logs -n crossplane-system deploy/crossplane --tail=200 || true
+
+  # Same end state as the kind job, but installed by Argo CD from this very
+  # commit's branch (fork-aware), then checked with the same try-* targets.
+  gitops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITOPS_REPO_URL: https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}.git
+      GITOPS_REVISION: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kind (cluster is created by the Makefile)
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - uses: azure/setup-helm@v4
+
+      - name: Bootstrap the platform with Argo CD
+        run: make local-up-gitops
+
+      - name: Tenant composition
+        run: make try-tenant
+
+      - name: PostgresDatabase composition
+        run: make try-postgres-database
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          kubectl get applications -n argocd -o wide || true
+          kubectl get applications -n argocd -o yaml || true
+          kubectl get providers,functions -o wide || true
+          kubectl get composite,managed -A || true
+          kubectl get pods -A || true
+          kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 || true
