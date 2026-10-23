@@ -186,6 +186,8 @@ gitops-wait:
 		--for=jsonpath='{.status.sync.status}'=Synced --timeout=900s
 	kubectl wait application/platform -n $(ARGOCD_NAMESPACE) \
 		--for=jsonpath='{.status.health.status}'=Healthy --timeout=600s
+	kubectl wait applications --all -n $(ARGOCD_NAMESPACE) \
+		--for=jsonpath='{.status.health.status}'=Healthy --timeout=300s
 	kubectl get applications -n $(ARGOCD_NAMESPACE)
 
 local-up-gitops: kind-up argocd-install bootstrap-secrets gitops-root-apply gitops-wait
