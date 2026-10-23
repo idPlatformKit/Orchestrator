@@ -6,3 +6,8 @@ architecture: standalone
 primary:
   persistence:
     enabled: false
+
+# Admin password comes from a Secret created by `make postgres-bootstrap-secrets`
+# (dev default), so it never sits in Git or in an Argo CD Application spec.
+auth:
+  existingSecret: postgres-server-auth

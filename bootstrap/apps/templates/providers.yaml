@@ -1,0 +1,31 @@
+# Wave 0: the providers/ kustomize base, unchanged. The two
+# ClusterProviderConfigs in it use CRDs that only exist once their Provider
+# is installed, so the first sync can't dry-run them: skip that check and
+# let the retry pick them up once the Providers are Healthy.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: providers
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: providers
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
