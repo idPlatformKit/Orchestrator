@@ -48,13 +48,17 @@ rules:
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [rolebindings]
     verbs: [get, list, watch]
-  # The platform's own XRs and the Vault managed resources a Tenant composes
+  # The platform's own XRs and the managed resources they compose
   # (configured as customResources in the portal).
   - apiGroups: [platform.idplatformkit.io, database.idplatformkit.io]
     resources: ["*"]
     verbs: [get, list, watch]
   - apiGroups: [vault.vault.m.upbound.io, auth.vault.m.upbound.io, kubernetes.vault.m.upbound.io]
     resources: ["*"]
+    verbs: [get, list, watch]
+  # The Postgres Role and Database a PostgresDatabase composes.
+  - apiGroups: [postgresql.sql.m.crossplane.io]
+    resources: [roles, databases]
     verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

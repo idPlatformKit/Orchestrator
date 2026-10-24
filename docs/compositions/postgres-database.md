@@ -62,6 +62,14 @@ kubectl exec -n postgres-system postgres-server-postgresql-0 -- \
 
 That's acceptable for a dev-mode reference setup with demo data only. On a platform holding real data, migrating would mean copying each database to its new name before dropping the old one.
 
+## Portal view: the `idplatformkit.io/tenant` label
+
+The `Role` and `Database` carry `idplatformkit.io/tenant: <namespace>`, set by the Composition from the XR's actual namespace. The portal's entity for a database selects its objects with `crossplane.io/composite=<name>,idplatformkit.io/tenant=<namespace>`. `crossplane.io/composite` alone isn't enough, because two tenants can each have a database with the same name.
+
+Claims opened by the portal's New Postgres database template put the same label on the `PostgresDatabase` itself, so it shows up too. The composition can't label its own XR.
+
+Using `backstage.io/kubernetes-namespace` instead looked simpler, but a namespaced lookup also queries the cluster-scoped kinds the portal knows about, such as `Tenant`. It then reports a `NOT_FOUND` error in the Kubernetes tab.
+
 ## Try it
 
 ```sh

@@ -104,7 +104,7 @@ What was observed on a fresh kind cluster with the `checkout` example claims (a 
 
 ## Portal access (`backstage-reader`)
 
-The portal's Kubernetes plugin reads the cluster through the `backstage-reader` ServiceAccount (`platform/backstage-reader/`). It has `get`/`list`/`watch` on the object types the plugin shows, the platform's XRs and the Vault managed resources, and **no access to Secrets** (checked: a request on `/api/v1/namespaces/payments/secrets` returns 403). `make backstage-token` prints the API server URL and the ServiceAccount token as environment variables for the portal's config. The long-lived token Secret is a local convenience, not how a real deployment should authenticate.
+The portal's Kubernetes plugin reads the cluster through the `backstage-reader` ServiceAccount (`platform/backstage-reader/`). It has `get`/`list`/`watch` on the object types the plugin shows, the platform's XRs, and the Vault and Postgres managed resources, and **no access to Secrets** (checked: a request on `/api/v1/namespaces/payments/secrets` returns 403). `make backstage-token` prints the API server URL and the ServiceAccount token as environment variables for the portal's config. The long-lived token Secret is a local convenience, not how a real deployment should authenticate.
 
 The `instances` Application excludes `catalog/`, which holds the Backstage entities describing each tenant. They're read by the portal, not applied to the cluster.
 
