@@ -37,6 +37,21 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
+              # Server-side name: <namespace>_<name>. All tenants share one
+              # Postgres server, so the XR name alone collided across
+              # namespaces: a PostgresDatabase with the same name in another
+              # namespace adopted the existing role and database, and deleting
+              # it dropped them (#21). "_" can't appear in Kubernetes names,
+              # so two (namespace, name) pairs never produce the same name.
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: metadata.namespace
+                    - fromFieldPath: metadata.name
+                  strategy: string
+                  string:
+                    fmt: "%s_%s"
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: spec.writeConnectionSecretToRef.name
@@ -68,13 +83,29 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
+              # Same <namespace>_<name> as the role, which owns the database.
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: metadata.namespace
+                    - fromFieldPath: metadata.name
+                  strategy: string
+                  string:
+                    fmt: "%s_%s"
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: metadata.namespace
+                    - fromFieldPath: metadata.name
+                  strategy: string
+                  string:
+                    fmt: "%s_%s"
                 toFieldPath: spec.forProvider.owner
             connectionDetails:
               - name: dbname
                 type: FromFieldPath
-                fromFieldPath: metadata.name
+                fromFieldPath: metadata.annotations[crossplane.io/external-name]
               - name: host
                 type: FromValue
                 value: postgres-server-postgresql.postgres-system.svc.cluster.local
