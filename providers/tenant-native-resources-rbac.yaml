@@ -24,6 +24,14 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
     verbs: ["*"]
+  # Vault add-on: the ServiceAccount allowed to read the tenant's secrets,
+  # and the External Secrets Operator SecretStore that uses it.
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["*"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["secretstores"]
+    verbs: ["*"]
   # Kubernetes RBAC escalation prevention: creating a RoleBinding to a
   # ClusterRole requires either holding a superset of that ClusterRole's own
   # rules, or the "bind" verb on that specific ClusterRole. The Tenant

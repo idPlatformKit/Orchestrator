@@ -5,6 +5,7 @@ CROSSPLANE_VERSION ?= 2.4.0
 # and GitOps flows install the same thing.
 POSTGRES_CHART_VERSION ?= 18.12.15
 OPENBAO_CHART_VERSION ?= 0.30.4
+ESO_CHART_VERSION ?= 2.14.0
 
 POSTGRES_NAMESPACE ?= postgres-system
 POSTGRES_RELEASE ?= postgres-server
@@ -27,7 +28,8 @@ GITOPS_REVISION ?= main
 	try-postgres-database try-tenant local-up local-down \
 	postgres-bootstrap-secrets openbao-bootstrap-secrets bootstrap-secrets \
 	argocd-install gitops-root-apply gitops-wait local-up-gitops \
-	backstage-reader-apply backstage-token
+	backstage-reader-apply backstage-token \
+	external-secrets-install external-secrets-uninstall
 
 kind-up:
 	kind create cluster --name $(CLUSTER_NAME) --config local/kind-config.yaml
@@ -136,6 +138,21 @@ openbao-bootstrap-secrets:
 openbao-server-uninstall:
 	helm uninstall $(OPENBAO_RELEASE) --namespace $(OPENBAO_NAMESPACE)
 
+# External Secrets Operator: pulls each tenant's OpenBao secrets into
+# Kubernetes Secrets through the SecretStore its Tenant composes.
+external-secrets-install:
+	helm repo add external-secrets https://charts.external-secrets.io --force-update
+	helm repo update external-secrets
+	helm upgrade --install external-secrets external-secrets/external-secrets \
+		--namespace external-secrets \
+		--create-namespace \
+		--version $(ESO_CHART_VERSION) \
+		--values platform/external-secrets/values.yaml \
+		--wait
+
+external-secrets-uninstall:
+	helm uninstall external-secrets --namespace external-secrets
+
 compositions-apply:
 	kubectl apply -k compositions/
 
@@ -166,7 +183,7 @@ backstage-token:
 	@echo "export K8S_CLUSTER_URL=$$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
 	@echo "export K8S_CLUSTER_TOKEN=$$(kubectl get secret backstage-reader-token -n backstage-system -o jsonpath='{.data.token}' | base64 -d)"
 
-local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply compositions-apply backstage-reader-apply
+local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply external-secrets-install compositions-apply backstage-reader-apply
 	@echo "Local cluster '$(CLUSTER_NAME)' is ready: Crossplane, provider-sql, provider-vault, the shared Postgres server, and the shared OpenBao server are installed, compositions applied."
 
 # --- GitOps flow (see docs/gitops.md) ---
