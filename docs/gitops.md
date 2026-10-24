@@ -103,5 +103,5 @@ What was observed on a fresh kind cluster with the `checkout` example claims (a 
 ## Scope and limits
 
 - Argo CD itself is installed by Helm and doesn't manage itself yet.
-- Claims are added by hand-written pull requests to the instances repository for now. A Backstage Software Template opening those pull requests is the next step (see the [roadmap](../README.md#roadmap)).
+- Claims normally arrive through the portal's [New Tenant template](https://github.com/idPlatformKit/portal), which opens the pull request on the developer's behalf. Hand-written pull requests work the same way.
 - Same caveat as the local flow: dev-mode, single-replica backing services with fixed credentials. A reference setup, not a production one.
