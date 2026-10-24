@@ -79,6 +79,8 @@ Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed l
 2. **"New app" golden path**: from a form to a running app in a tenant, wired to its database and secrets ([#24](https://github.com/idPlatformKit/Orchestrator/issues/24)).
 3. **Per-tenant observability**: a Grafana dashboard for each tenant ([#25](https://github.com/idPlatformKit/Orchestrator/issues/25)).
 
+Beyond that, the longer-term roadmap runs from Milestone 4 to 13: HTTPS and certificates on kind, SSO with Dex, day-2 lifecycle and governance, the composition library as a product, developer experience, agentic development, tenancy tiers and multi-cluster, prod-like services, a cloud target, and AI platform services. Each milestone is a [`roadmap` issue](https://github.com/idPlatformKit/Orchestrator/issues?q=is%3Aissue%20label%3Aroadmap%20is%3Aopen), prefixed `[M4]` to `[M13]`.
+
 Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/issues).
 
 ## Part of IdPlatformKit
