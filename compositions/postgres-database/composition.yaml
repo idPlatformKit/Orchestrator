@@ -52,6 +52,13 @@ spec:
                   string:
                     fmt: "%s_%s"
                 toFieldPath: metadata.annotations[crossplane.io/external-name]
+              # Lets the portal select this database's objects across the
+              # cluster (crossplane.io/composite=<name>,
+              # idplatformkit.io/tenant=<namespace>): the name alone is only
+              # unique within a namespace.
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.labels[idplatformkit.io/tenant]
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: spec.writeConnectionSecretToRef.name
@@ -93,6 +100,13 @@ spec:
                   string:
                     fmt: "%s_%s"
                 toFieldPath: metadata.annotations[crossplane.io/external-name]
+              # Lets the portal select this database's objects across the
+              # cluster (crossplane.io/composite=<name>,
+              # idplatformkit.io/tenant=<namespace>): the name alone is only
+              # unique within a namespace.
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.labels[idplatformkit.io/tenant]
               - type: CombineFromComposite
                 combine:
                   variables:
