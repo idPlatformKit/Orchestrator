@@ -73,6 +73,15 @@ The `providers` app goes `Degraded` for one retry cycle, then the retry (10s bac
 
 **...and it was still `Healthy` one wave too early.** With that fixed, a second run printed `compositions OutOfSync Missing` next to a `Synced`/`Healthy` root. A child Application that hasn't synced yet reports `Missing`, and Argo CD doesn't count `Missing` against the parent's aggregated health. The first version of the health check passed the child's status through as-is. It now maps `Missing` to `Progressing`. A run polled every 5 seconds afterwards showed the waves in order (crossplane → shared services → providers → compositions), with the root only `Synced`/`Healthy` once `compositions` was. As a final guard, `make gitops-wait` also waits for every Application to be `Healthy`.
 
+**Argo CD's redis image is rate-limited in CI.** The chart pulls redis from ECR Public (`ecr-public.aws.com`), which limits anonymous pulls per IP. On shared GitHub Actions runners, the `gitops` e2e job failed intermittently, with redis stuck in `ImagePullBackOff` and helm timing out. A first guess blamed slow registries and only raised helm's timeout to 10 minutes, which didn't help. Once the CI debug step printed the pod events, the real error showed up:
+
+```
+429 Too Many Requests
+toomanyrequests: Data limit exceeded
+```
+
+`bootstrap/argocd/values.yaml` now pulls the same image (same digest) from `mirror.gcr.io/library/redis`, Google's Docker Hub mirror, which doesn't have that limit.
+
 **Self-heal works on Crossplane objects.** Deleting the `tenant-incluster` Composition by hand: Argo CD had recreated it when checked 30 seconds later and the `compositions` app stayed `Synced`. No `ignoreDifferences` was needed for the Crossplane `Provider`, `Function`, XRD or Composition objects: none of them showed up as drifted.
 
 ## Claims from the instances repository

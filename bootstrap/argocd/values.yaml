@@ -65,3 +65,13 @@ configs:
             end
           end
           return hs
+
+# The chart's default redis image comes from ECR Public, which rate-limits
+# anonymous pulls per IP. On shared GitHub Actions runners that failed the
+# e2e job repeatedly with "429 Too Many Requests / toomanyrequests: Data limit
+# exceeded" (issue #11). mirror.gcr.io serves the same Docker Hub library
+# image (same digest) without that limit.
+redis:
+  image:
+    repository: mirror.gcr.io/library/redis
+    tag: 8.6.4-alpine
