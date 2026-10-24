@@ -66,13 +66,14 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ `PostgresDatabase`
 - ✅ Argo CD bootstrap (app of apps), end-to-end tested in CI
 - ✅ Claims synced by Argo CD from the [instances](https://github.com/idPlatformKit/instances) repository, validated in CI
-- 🚧 Backstage Software Template creating `Tenant` claims
+- ✅ Backstage Software Template opening a pull request with a `Tenant` claim ([portal](https://github.com/idPlatformKit/portal)). Verified end to end, from the form to a `Ready` Tenant
+- 🚧 Kubernetes/Crossplane view of a tenant's resources in Backstage
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
 ## Roadmap
 
-1. **Portal ↔ Orchestrator**: a [Backstage](https://github.com/idPlatformKit/portal) Software Template that opens a PR adding a `Tenant` claim.
+1. **Portal visibility**: the Kubernetes/Crossplane plugin in Backstage, showing each tenant's resources and their status.
 2. **Secrets delivery**: External Secrets Operator pulling each tenant's OpenBao secrets into Kubernetes `Secret`s.
 3. **Composition nesting**: `PostgresDatabase` provisioned from within a `Tenant`.
 4. **Guardrails**: Kyverno policies and per-tenant observability.
