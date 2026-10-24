@@ -333,6 +333,15 @@ spec:
         apiVersion: sequencer.fn.crossplane.io/v1beta1
         kind: Input
         resetCompositeReadiness: true
+        # Same rules, reversed, on deletion: Usages keep the Namespace (and
+        # the VaultNamespace) until everything inside is gone. Without this,
+        # deleting a Tenant could leave its Namespace stuck Terminating: the
+        # Vault managed resources inside it couldn't create their
+        # ProviderConfigUsage in a terminating namespace, so never finished
+        # deleting.
+        enableDeletionSequencing: true
+        usageVersion: v2
+        replayDeletion: true
         rules:
           - sequence:
               - namespace
