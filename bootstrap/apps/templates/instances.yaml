@@ -16,7 +16,9 @@ spec:
     path: .
     directory:
       recurse: true
-      exclude: '.github/**'
+      # .github/: CI. catalog/: Backstage entities describing the tenants,
+      # read by the portal, not Kubernetes objects.
+      exclude: '{.github/**,catalog/**}'
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:

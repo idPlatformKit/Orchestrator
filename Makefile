@@ -26,7 +26,8 @@ GITOPS_REVISION ?= main
 	compositions-apply compositions-delete \
 	try-postgres-database try-tenant local-up local-down \
 	postgres-bootstrap-secrets openbao-bootstrap-secrets bootstrap-secrets \
-	argocd-install gitops-root-apply gitops-wait local-up-gitops
+	argocd-install gitops-root-apply gitops-wait local-up-gitops \
+	backstage-reader-apply backstage-token
 
 kind-up:
 	kind create cluster --name $(CLUSTER_NAME) --config local/kind-config.yaml
@@ -153,7 +154,19 @@ try-tenant:
 	kubectl get resourcequota,limitrange,rolebinding,networkpolicy -n demo-team
 	kubectl get vaultnamespace.vault.vault.m.upbound.io,mount.vault.vault.m.upbound.io,policy.vault.vault.m.upbound.io -n demo-team
 
-local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply compositions-apply
+# Read-only ServiceAccount for the portal's Kubernetes plugin
+# (platform/backstage-reader/). The GitOps flow installs it with Argo CD.
+backstage-reader-apply:
+	kubectl apply -k platform/backstage-reader/
+
+# Prints what the portal needs to reach this cluster, as environment
+# variables for its app-config (see idPlatformKit/portal README):
+#   eval "$$(make -s backstage-token)"
+backstage-token:
+	@echo "export K8S_CLUSTER_URL=$$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
+	@echo "export K8S_CLUSTER_TOKEN=$$(kubectl get secret backstage-reader-token -n backstage-system -o jsonpath='{.data.token}' | base64 -d)"
+
+local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply compositions-apply backstage-reader-apply
 	@echo "Local cluster '$(CLUSTER_NAME)' is ready: Crossplane, provider-sql, provider-vault, the shared Postgres server, and the shared OpenBao server are installed, compositions applied."
 
 # --- GitOps flow (see docs/gitops.md) ---

@@ -1,0 +1,22 @@
+# Wave -1: read-only identity for the portal's Kubernetes plugin
+# (platform/backstage-reader/). Independent of Crossplane: RBAC rules may
+# name API groups that don't exist yet.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage-reader
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: platform/backstage-reader
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
