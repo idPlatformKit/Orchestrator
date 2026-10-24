@@ -99,6 +99,8 @@ cannot get using: an empty namespace may not be set when a resource name is prov
 
 Tenant deletion hung forever, which is worse than without it. This is a known upstream bug ([function-sequencer#114](https://github.com/crossplane-contrib/function-sequencer/issues/114)), so only creation sequencing is enabled.
 
+**Known issue: deleting a Tenant right after creating it can hang** ([#14](https://github.com/idPlatformKit/Orchestrator/issues/14)). The Kubernetes namespace starts terminating while the `VaultNamespace` inside it still needs to create its `ProviderConfigUsage`, which a terminating namespace refuses. It didn't come from creation sequencing: on kind, Tenants deleted 150 seconds after `Ready` went away in 6 to 7 seconds, both with and without it. Tenants deleted about 3 seconds after `Ready` hung every time. Faster creation does make that window easier to hit.
+
 ## Try it
 
 ```sh
