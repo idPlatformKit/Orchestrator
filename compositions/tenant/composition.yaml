@@ -302,6 +302,64 @@ spec:
                 fromFieldPath: spec.vault.serviceAccountName
                 toFieldPath: spec.forProvider.boundServiceAccountNames[0]
 
+          # The ServiceAccount bound to the tenant's Vault role. Created here
+          # so the SecretStore below can authenticate as soon as the Tenant
+          # is Ready; workloads that need the secrets run as it too.
+          - name: vault-serviceaccount
+            base:
+              apiVersion: v1
+              kind: ServiceAccount
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.vault.serviceAccountName
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+            readinessChecks:
+              - type: None
+
+          # External Secrets Operator store reading the tenant's own OpenBao
+          # namespace (KV v2 mount "secret") with the tenant's Kubernetes
+          # auth role. Teams declare ExternalSecrets against it to get
+          # Kubernetes Secrets. Same identity and policy as a pod logging in
+          # directly, so nothing broader is granted.
+          - name: vault-secretstore
+            base:
+              apiVersion: external-secrets.io/v1
+              kind: SecretStore
+              metadata:
+                name: openbao
+              spec:
+                provider:
+                  vault:
+                    server: http://openbao.openbao-system.svc.cluster.local:8200
+                    namespace: placeholder
+                    path: secret
+                    version: v2
+                    auth:
+                      kubernetes:
+                        mountPath: kubernetes
+                        role: tenant-access
+                        serviceAccountRef:
+                          name: placeholder
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.provider.vault.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.vault.serviceAccountName
+                toFieldPath: spec.provider.vault.auth.kubernetes.serviceAccountRef.name
+            # ESO validates the store against OpenBao and reports Ready.
+            readinessChecks:
+              - type: MatchCondition
+                matchCondition:
+                  type: Ready
+                  status: "True"
+
     - step: filter-optional
       functionRef:
         name: function-cel-filter
@@ -336,10 +394,33 @@ spec:
         rules:
           - sequence:
               - namespace
-              - resourcequota|limitrange|rolebinding|networkpolicy|vault-namespace
+              - (resourcequota|limitrange|rolebinding|networkpolicy|vault-namespace)
           - sequence:
               - vault-namespace
-              - vault-kv-mount|vault-policy|vault-k8s-auth-backend
+              - (vault-kv-mount|vault-policy|vault-k8s-auth-backend)
           - sequence:
               - vault-k8s-auth-backend
-              - vault-k8s-auth-config|vault-k8s-auth-role
+              - (vault-k8s-auth-config|vault-k8s-auth-role)
+          - sequence:
+              - namespace
+              - vault-serviceaccount
+          # The store can only validate once the role it logs in with, the
+          # policy and the mount it reads, and its ServiceAccount all exist.
+          # One rule per prerequisite: a group of alternatives in first
+          # position didn't hold the store back (it was created before the
+          # role and failed validation three times).
+          - sequence:
+              - vault-k8s-auth-role
+              - vault-secretstore
+          - sequence:
+              - vault-k8s-auth-config
+              - vault-secretstore
+          - sequence:
+              - vault-policy
+              - vault-secretstore
+          - sequence:
+              - vault-kv-mount
+              - vault-secretstore
+          - sequence:
+              - vault-serviceaccount
+              - vault-secretstore

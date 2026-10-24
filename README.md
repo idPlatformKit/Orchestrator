@@ -20,7 +20,7 @@ spec:
     serviceAccountName: demo-app
 ```
 
-→ a namespace with `ResourceQuota`, `LimitRange`, RBAC and a default-deny `NetworkPolicy`, plus its own secrets namespace, KV mount, policy and Kubernetes auth role in OpenBao.
+→ a namespace with `ResourceQuota`, `LimitRange`, RBAC and a default-deny `NetworkPolicy`, plus its own secrets namespace, KV mount, policy and Kubernetes auth role in OpenBao, and a `SecretStore` so the team gets those secrets as Kubernetes `Secret`s through External Secrets Operator.
 
 The whole thing runs **locally on kind in one command**, no cloud account needed.
 

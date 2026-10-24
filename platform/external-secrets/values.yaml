@@ -1,0 +1,10 @@
+# External Secrets Operator chart values. Each Tenant with the Vault add-on
+# gets a namespaced SecretStore pointing at its own OpenBao namespace (see
+# compositions/tenant/), so no cluster-wide store is configured here.
+# Not for production use: single replica, no metrics/monitoring.
+installCRDs: true
+replicaCount: 1
+webhook:
+  replicaCount: 1
+certController:
+  replicaCount: 1

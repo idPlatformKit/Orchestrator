@@ -37,6 +37,7 @@ flowchart TB
         RBAC[ClusterRole: native resource composition]
         PG[(shared Postgres server)]
         OB[(shared OpenBao server)]
+        ESO[External Secrets Operator]
     end
     subgraph L2["Composition library (compositions/)"]
         XRD1[PostgresDatabase XRD + Composition]
@@ -52,6 +53,7 @@ flowchart TB
     PG --> XRD1
     PVAULT --> XRD2
     OB --> XRD2
+    ESO --> XRD2
     FN --> XRD1
     FN --> XRD2
     RBAC --> XRD2
@@ -103,5 +105,5 @@ Both follow the same shape: one shared backing service (Postgres / OpenBao) inst
 
 - No production hardening: both shared backing servers run in single-replica, dev/in-memory modes with fixed local credentials — fine for `kind`, not for a real cluster.
 - Argo CD installs the platform layer and syncs the claims from the instances repository. Claims are opened there by the portal's New Tenant template, or by hand. Argo CD itself is installed by Helm, not self-managed, and the dev bootstrap Secrets are created imperatively (see [gitops.md](gitops.md)).
-- `Tenant`'s Vault add-on stops at "the policy and auth role exist and a named ServiceAccount can use them" — it doesn't (yet) pull those secrets into Kubernetes `Secret`s. That's a deliberate stopping point: it's the direct prerequisite for a planned External Secrets Operator (ESO) integration, which would authenticate the same way.
+- `Tenant`'s Vault add-on delivers secrets as Kubernetes `Secret`s through External Secrets Operator (one namespaced `SecretStore` per tenant, logging in with the tenant's own Kubernetes auth role), but it doesn't write any secret itself: populating OpenBao is the team's job.
 - `PostgresDatabase` is not (yet) composable *from* a `Tenant` claim (nested XR composition), even though Crossplane supports it — each composition is proven independently first.

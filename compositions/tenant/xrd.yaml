@@ -36,8 +36,8 @@ spec:
                       description: >-
                         The only Kubernetes ServiceAccount (in this tenant's
                         namespace) allowed to authenticate as this tenant's
-                        Vault policy. Not created by this composition -- the
-                        app team creates it when they deploy their workload.
+                        Vault policy. Created by this composition, and used
+                        by the tenant's External Secrets Operator SecretStore.
                   required:
                     - serviceAccountName
               required:

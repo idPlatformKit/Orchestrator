@@ -4,12 +4,13 @@ repoURL: https://github.com/idPlatformKit/Orchestrator.git
 targetRevision: main
 
 # Upstream chart versions, pinned. Keep in sync with the Makefile
-# (CROSSPLANE_VERSION, POSTGRES_CHART_VERSION, OPENBAO_CHART_VERSION) so
-# both install paths deploy the same thing.
+# (CROSSPLANE_VERSION, POSTGRES_CHART_VERSION, OPENBAO_CHART_VERSION,
+# ESO_CHART_VERSION) so both install paths deploy the same thing.
 charts:
   crossplane: 2.4.0
   postgresql: 18.12.15
   openbao: 0.30.4
+  externalSecrets: 2.14.0
 
 # Where the claims (Tenant, PostgresDatabase, ...) live. Removing a claim
 # there deletes the resource: the instances Application prunes.
