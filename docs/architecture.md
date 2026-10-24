@@ -33,7 +33,7 @@ flowchart TB
         CP[Crossplane v2.4.0]
         PSQL[provider-sql]
         PVAULT[provider-vault]
-        FN[Functions: patch-and-transform, auto-ready, cel-filter]
+        FN[Functions: patch-and-transform, auto-ready, cel-filter, sequencer]
         RBAC[ClusterRole: native resource composition]
         PG[(shared Postgres server)]
         OB[(shared OpenBao server)]
@@ -77,6 +77,7 @@ Applied once, before any composition or claim — these are prerequisites, not p
 | `function-patch-and-transform` | Function | The composition engine for both XRDs — patches an XR's spec onto a set of composed resource templates |
 | `function-auto-ready` | Function | Marks composed resources `Ready` once their own health signals say so (Crossplane managed resources) |
 | `function-cel-filter` | Function | Conditionally drops composed resources from the desired set based on a CEL expression over the XR's spec — this is how `Tenant`'s optional Vault add-on is toggled without a second Composition |
+| `function-sequencer` | Function | Holds composed resources back until the ones they depend on are `Ready`. `Tenant` uses it to create its Namespace before what lives in it, and its Vault namespace before what lives in that |
 | `crossplane-tenant-native-resources` | ClusterRole | Aggregates (`rbac.crossplane.io/aggregate-to-crossplane: "true"`) into Crossplane's own ClusterRole, granting it rights over `namespaces`, `resourcequotas`, `limitranges`, `rolebindings` and `networkpolicies` — plus the RBAC `bind` verb specifically on the `edit` ClusterRole, which Kubernetes' privilege-escalation check requires before Crossplane can create a `RoleBinding` to it |
 | `postgres-providerconfig.yaml`, `openbao-providerconfig.yaml` | ClusterProviderConfig | Point `provider-sql`/`provider-vault` at the shared local Postgres/OpenBao servers |
 

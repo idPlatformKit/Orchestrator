@@ -317,3 +317,29 @@ spec:
     - step: ready
       functionRef:
         name: function-auto-ready
+
+    # Create resources in dependency order instead of all at once. Without
+    # this, every namespaced resource first failed with `namespaces "<tenant>"
+    # not found` and Crossplane backed off for ~90s before retrying; then the
+    # Vault children failed with OpenBao's own `namespace not found` (404)
+    # until the VaultNamespace existed, and provider-vault backed off again.
+    # A Tenant took ~3 minutes to become Ready (see docs/compositions/tenant.md).
+    # Last in the pipeline so that resetCompositeReadiness has the final say:
+    # the Tenant can't report Ready while some resources are still held back.
+    - step: sequence
+      functionRef:
+        name: function-sequencer
+      input:
+        apiVersion: sequencer.fn.crossplane.io/v1beta1
+        kind: Input
+        resetCompositeReadiness: true
+        rules:
+          - sequence:
+              - namespace
+              - resourcequota|limitrange|rolebinding|networkpolicy|vault-namespace
+          - sequence:
+              - vault-namespace
+              - vault-kv-mount|vault-policy|vault-k8s-auth-backend
+          - sequence:
+              - vault-k8s-auth-backend
+              - vault-k8s-auth-config|vault-k8s-auth-role

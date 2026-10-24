@@ -11,6 +11,7 @@ resources:
   - function-patch-and-transform.yaml
   - function-auto-ready.yaml
   - function-cel-filter.yaml
+  - function-sequencer.yaml
   - tenant-native-resources-rbac.yaml
   - postgres-providerconfig.yaml
   - openbao-providerconfig.yaml

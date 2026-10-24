@@ -80,6 +80,27 @@ spec:
 
 Excluding `Delete` means Crossplane removes the Kubernetes object without calling the provider's delete on the external resource — correct here specifically because the parent `VaultNamespace`'s own (normal, `Delete`-included) deletion already does that recursively. This was found and fixed by actually toggling `spec.vault.enabled` off and watching a resource get stuck, twice — first with the wrong mechanism (`spec.deletionPolicy: Orphan`, which doesn't exist on this provider's schema), then with the right one.
 
+## Creation order: from 3 minutes to 3 seconds
+
+Crossplane applies every composed resource of a pipeline at once. For a `Tenant`, that's a problem twice over:
+
+1. **Kubernetes**: the `ResourceQuota`, `LimitRange`, `RoleBinding`, `NetworkPolicy` and the six Vault managed resources live *inside* the tenant's namespace, which doesn't exist yet on the first pass. Each fails with `namespaces "<tenant>" not found`, and the XR backs off before retrying. On kind this first phase took about 90 seconds.
+2. **OpenBao**: the mount, policy and Kubernetes auth resources live inside the tenant's OpenBao namespace. When they're created before it, OpenBao answers `404 namespace not found`, and provider-vault backs off again.
+
+A Tenant with the Vault add-on took about **3 minutes** to become `Ready` (183s measured). That's longer than the 180s `make try-tenant` waits, which is why the e2e `kind` job failed intermittently (#11).
+
+The last pipeline step, `function-sequencer`, now creates resources in dependency order: namespace → in-namespace resources and the `VaultNamespace` → mount, policy and auth backend → auth config and role. With `resetCompositeReadiness`, the Tenant can't report `Ready` while some resources are still held back. Measured on kind afterwards: Tenants with the Vault add-on were `Ready` in **2 to 3 seconds** over three consecutive runs. A Tenant without it took 2 seconds. In OpenBao, the namespace, policy and auth role were all there.
+
+**Wrong first attempt: deletion sequencing.** `function-sequencer` can also order deletion, by creating `Usage`/`ClusterUsage` objects. For a cluster-scoped XR like `Tenant`, v0.6.0 generates `ClusterUsage`s whose `spec.by` has no namespace, so they can never be released:
+
+```
+cannot get using: an empty namespace may not be set when a resource name is provided
+```
+
+Tenant deletion hung forever, which is worse than without it. This is a known upstream bug ([function-sequencer#114](https://github.com/crossplane-contrib/function-sequencer/issues/114)), so only creation sequencing is enabled.
+
+**Known issue: deleting a Tenant right after creating it can hang** ([#14](https://github.com/idPlatformKit/Orchestrator/issues/14)). The Kubernetes namespace starts terminating while the `VaultNamespace` inside it still needs to create its `ProviderConfigUsage`, which a terminating namespace refuses. It didn't come from creation sequencing: on kind, Tenants deleted 150 seconds after `Ready` went away in 6 to 7 seconds, both with and without it. Tenants deleted about 3 seconds after `Ready` hung every time. Faster creation does make that window easier to hit.
+
 ## Try it
 
 ```sh
