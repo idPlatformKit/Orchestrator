@@ -68,14 +68,14 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ Claims synced by Argo CD from the [instances](https://github.com/idPlatformKit/instances) repository, validated in CI
 - ✅ Backstage Software Template opening a pull request with a `Tenant` claim ([portal](https://github.com/idPlatformKit/portal)). Verified end to end, from the form to a `Ready` Tenant
 - ✅ Each tenant's Kubernetes and Crossplane resources visible in the portal (Backstage Kubernetes plugin, read-only access)
+- ✅ Tenant secrets delivered as Kubernetes `Secret`s by External Secrets Operator, from the tenant's own OpenBao namespace (cross-tenant access refused by OpenBao, tested)
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
 ## Roadmap
 
-1. **Secrets delivery**: External Secrets Operator pulling each tenant's OpenBao secrets into Kubernetes `Secret`s.
-2. **Composition nesting**: `PostgresDatabase` provisioned from within a `Tenant`.
-3. **Guardrails**: Kyverno policies and per-tenant observability.
+1. **Composition nesting**: `PostgresDatabase` provisioned from within a `Tenant`.
+2. **Guardrails**: Kyverno policies and per-tenant observability.
 
 Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/issues).
 
