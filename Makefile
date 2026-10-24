@@ -160,10 +160,10 @@ local-up: kind-up crossplane-install providers-apply postgres-server-install ope
 
 bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets
 
-# --timeout 10m: helm's default 5m was hit twice in CI (PR #10) while the
-# kind node was still pulling Argo CD's images (redis ImagePullBackOff, then
-# argocd-redis-secret-init stuck in ContainerCreating). Same chart and images
-# pulled in seconds locally and in earlier CI runs: slow registries, not a bug.
+# --timeout 10m: helm's default 5m was hit in CI while the kind node was
+# still pulling Argo CD's images. The redis ImagePullBackOff seen there turned
+# out to be ECR Public rate limiting (429), fixed in bootstrap/argocd/values.yaml;
+# the longer timeout covers genuinely slow pulls from shared CI runners.
 argocd-install:
 	helm repo add argo https://argoproj.github.io/argo-helm --force-update
 	helm repo update argo
