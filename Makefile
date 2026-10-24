@@ -58,6 +58,7 @@ providers-apply:
 		-f providers/function-patch-and-transform.yaml \
 		-f providers/function-auto-ready.yaml \
 		-f providers/function-cel-filter.yaml \
+		-f providers/function-sequencer.yaml \
 		-f providers/tenant-native-resources-rbac.yaml
 	kubectl wait --for=condition=Healthy --timeout=180s \
 		provider.pkg.crossplane.io/provider-sql \
@@ -65,7 +66,8 @@ providers-apply:
 	kubectl wait --for=condition=Healthy --timeout=180s \
 		function.pkg.crossplane.io/function-patch-and-transform \
 		function.pkg.crossplane.io/function-auto-ready \
-		function.pkg.crossplane.io/function-cel-filter
+		function.pkg.crossplane.io/function-cel-filter \
+		function.pkg.crossplane.io/function-sequencer
 	kubectl apply -f providers/postgres-providerconfig.yaml
 
 # The Vault ClusterProviderConfig needs the openbao-creds Secret and a
