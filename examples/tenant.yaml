@@ -6,6 +6,7 @@ spec:
   ownerGroup: demo-team-engineers
   vault:
     enabled: true
-    # Not created by this composition -- create it yourself in the
-    # demo-team namespace before a pod needs to authenticate as it.
+    # Created by the composition in the demo-team namespace. It's the only
+    # ServiceAccount allowed to read the tenant's OpenBao secrets, and the
+    # identity the tenant's SecretStore uses.
     serviceAccountName: demo-app

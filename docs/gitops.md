@@ -37,6 +37,7 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | -1 | `postgres-server`, `openbao-server` | Upstream Helm charts + `platform/*/values.yaml` from this repo |
 | 0 | `providers` | `providers/` kustomize base |
 | 1 | `compositions` | `compositions/` kustomize base |
+| -1 | `external-secrets` | External Secrets Operator Helm chart + `platform/external-secrets/values.yaml` |
 | -1 | `backstage-reader` | `platform/backstage-reader/`: read-only ServiceAccount for the portal's Kubernetes plugin |
 | 2 | `instances` | The [instances](https://github.com/idPlatformKit/instances) repository: `Tenant` and `PostgresDatabase` claims |
 
@@ -52,7 +53,7 @@ Three Secrets hold dev-default credentials and are created by `make bootstrap-se
 | `postgres-admin-conn` | `postgres-system` | provider-sql `ClusterProviderConfig` |
 | `openbao-creds` | `openbao-system` | provider-vault `ClusterProviderConfig` |
 
-This imperative step is the honest stopgap until secrets are delivered by a proper mechanism (External Secrets Operator is on the roadmap). The values are the same fixed local credentials as in the Makefile and are only meant for kind.
+This imperative step is a bootstrap stopgap: External Secrets Operator delivers *tenant* secrets, but the platform's own bootstrap credentials still have to exist before anything, ESO included, can run. The values are the same fixed local credentials as in the Makefile and are only meant for kind.
 
 ## What was actually observed, gotchas included
 

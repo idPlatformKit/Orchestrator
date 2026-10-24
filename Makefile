@@ -170,6 +170,16 @@ try-tenant:
 	kubectl get namespace demo-team
 	kubectl get resourcequota,limitrange,rolebinding,networkpolicy -n demo-team
 	kubectl get vaultnamespace.vault.vault.m.upbound.io,mount.vault.vault.m.upbound.io,policy.vault.vault.m.upbound.io -n demo-team
+	kubectl get serviceaccount demo-app -n demo-team
+	kubectl get secretstore openbao -n demo-team
+	@# Write a secret into the tenant's own OpenBao namespace (dev root token),
+	@# then let External Secrets Operator deliver it as a Kubernetes Secret.
+	kubectl exec -n $(OPENBAO_NAMESPACE) $(OPENBAO_RELEASE)-0 -- \
+		env BAO_TOKEN=$(OPENBAO_DEV_ROOT_TOKEN) BAO_NAMESPACE=demo-team \
+		bao kv put secret/db-credentials password=from-openbao-demo-team
+	kubectl apply -f examples/tenant-external-secret.yaml
+	kubectl wait --for=condition=Ready --timeout=60s -f examples/tenant-external-secret.yaml
+	@echo "db-credentials/password in Kubernetes: $$(kubectl get secret db-credentials -n demo-team -o jsonpath='{.data.password}' | base64 -d)"
 
 # Read-only ServiceAccount for the portal's Kubernetes plugin
 # (platform/backstage-reader/). The GitOps flow installs it with Argo CD.
