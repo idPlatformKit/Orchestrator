@@ -37,6 +37,7 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | -1 | `postgres-server`, `openbao-server` | Upstream Helm charts + `platform/*/values.yaml` from this repo |
 | 0 | `providers` | `providers/` kustomize base |
 | 1 | `compositions` | `compositions/` kustomize base |
+| -1 | `backstage-reader` | `platform/backstage-reader/`: read-only ServiceAccount for the portal's Kubernetes plugin |
 | 2 | `instances` | The [instances](https://github.com/idPlatformKit/instances) repository: `Tenant` and `PostgresDatabase` claims |
 
 Chart versions are pinned in `bootstrap/apps/values.yaml` and in the Makefile (`CROSSPLANE_VERSION`, `POSTGRES_CHART_VERSION`, `OPENBAO_CHART_VERSION`). Keep both in sync.
@@ -99,6 +100,12 @@ What was observed on a fresh kind cluster with the `checkout` example claims (a 
 **Self-heal applies to claims too.** Patching the `Tenant`'s `ownerGroup` by hand: Argo CD had reverted it 25 seconds later, and the namespace's `RoleBinding` still pointed at `checkout-engineers`.
 
 **Not tested yet: prune.** Removing a claim from the instances repository should delete the resource and, for a `Tenant`, its whole namespace. That's the intended GitOps behaviour, but it hasn't been exercised end to end here yet.
+
+## Portal access (`backstage-reader`)
+
+The portal's Kubernetes plugin reads the cluster through the `backstage-reader` ServiceAccount (`platform/backstage-reader/`). It has `get`/`list`/`watch` on the object types the plugin shows, the platform's XRs and the Vault managed resources, and **no access to Secrets** (checked: a request on `/api/v1/namespaces/payments/secrets` returns 403). `make backstage-token` prints the API server URL and the ServiceAccount token as environment variables for the portal's config. The long-lived token Secret is a local convenience, not how a real deployment should authenticate.
+
+The `instances` Application excludes `catalog/`, which holds the Backstage entities describing each tenant. They're read by the portal, not applied to the cluster.
 
 ## Scope and limits
 

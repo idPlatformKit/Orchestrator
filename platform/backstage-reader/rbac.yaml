@@ -1,0 +1,71 @@
+# Read-only identity for the IdPlatformKit portal (Backstage Kubernetes
+# plugin): lets the portal show each tenant's Kubernetes and Crossplane
+# resources. Read verbs only, and no access to Secrets.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backstage-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backstage-reader
+  namespace: backstage-system
+---
+# Long-lived token for the ServiceAccount, read by `make backstage-token`.
+# Local/dev only: a real deployment would run Backstage in-cluster or use
+# short-lived tokens.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backstage-reader-token
+  namespace: backstage-system
+  annotations:
+    kubernetes.io/service-account.name: backstage-reader
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backstage-reader
+rules:
+  # Object types the Backstage Kubernetes plugin fetches by default.
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps, limitranges, resourcequotas, namespaces]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [get, list, watch]
+  # The platform's own XRs and the Vault managed resources a Tenant composes
+  # (configured as customResources in the portal).
+  - apiGroups: [platform.idplatformkit.io, database.idplatformkit.io]
+    resources: ["*"]
+    verbs: [get, list, watch]
+  - apiGroups: [vault.vault.m.upbound.io, auth.vault.m.upbound.io, kubernetes.vault.m.upbound.io]
+    resources: ["*"]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backstage-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backstage-reader
+subjects:
+  - kind: ServiceAccount
+    name: backstage-reader
+    namespace: backstage-system
