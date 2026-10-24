@@ -406,6 +406,21 @@ spec:
               - vault-serviceaccount
           # The store can only validate once the role it logs in with, the
           # policy and the mount it reads, and its ServiceAccount all exist.
+          # One rule per prerequisite: a group of alternatives in first
+          # position didn't hold the store back (it was created before the
+          # role and failed validation three times).
           - sequence:
-              - (vault-k8s-auth-config|vault-k8s-auth-role|vault-policy|vault-kv-mount|vault-serviceaccount)
+              - vault-k8s-auth-role
+              - vault-secretstore
+          - sequence:
+              - vault-k8s-auth-config
+              - vault-secretstore
+          - sequence:
+              - vault-policy
+              - vault-secretstore
+          - sequence:
+              - vault-kv-mount
+              - vault-secretstore
+          - sequence:
+              - vault-serviceaccount
               - vault-secretstore
