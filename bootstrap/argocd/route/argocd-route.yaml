@@ -1,0 +1,20 @@
+# https://argocd.127.0.0.1.nip.io: the Argo CD UI and API, behind the platform
+# Gateway (platform/gateway/). Here rather than in platform/ because Argo CD
+# only exists in the GitOps flow. TLS ends at the Gateway, so argocd-server
+# serves plain HTTP (server.insecure in bootstrap/argocd/values.yaml).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  parentRefs:
+    - name: platform
+      namespace: platform-gateway
+      sectionName: https
+  hostnames:
+    - argocd.127.0.0.1.nip.io
+  rules:
+    - backendRefs:
+        - name: argocd-server
+          port: 80

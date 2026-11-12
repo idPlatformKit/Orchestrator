@@ -8,7 +8,14 @@ notifications:
   enabled: false
 
 configs:
+  params:
+    # TLS ends at the platform Gateway (bootstrap/argocd/route/), which talks
+    # plain HTTP to argocd-server.
+    server.insecure: true
+
   cm:
+    url: https://argocd.127.0.0.1.nip.io
+
     # Argo CD stopped assessing the health of Application resources in 1.8,
     # so out of the box an app-of-apps does NOT wait for a child app to be
     # Healthy before moving to the next sync wave -- it only waits for the

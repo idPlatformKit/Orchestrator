@@ -1,0 +1,12 @@
+# Signs every certificate on the cluster with the local CA. The CA's key pair
+# is not in Git: `make local-ca` generates it once on the host (.local-ca/,
+# git-ignored) and `make local-ca-secret` loads it into this Secret, so the
+# same CA survives cluster re-creations and only has to be trusted once
+# (`make local-ca-trust`).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: idplatformkit-local-ca
+spec:
+  ca:
+    secretName: idplatformkit-local-ca

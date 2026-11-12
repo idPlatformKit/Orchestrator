@@ -1,0 +1,24 @@
+# How Envoy Gateway exposes the Envoy proxy it runs for the platform Gateway.
+# kind has no load balancer, so a NodePort Service with fixed ports, mapped to
+# the host's 80/443 by local/kind-config.yaml (extraPortMappings). The patch
+# merges on the Service ports by their `port` (the Gateway listener ports).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: kind-nodeport
+  namespace: platform-gateway
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: NodePort
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - port: 80
+                  nodePort: 30080
+                - port: 443
+                  nodePort: 30443

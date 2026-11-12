@@ -1,0 +1,6 @@
+# cert-manager chart values. Certificates on kind are signed by a local CA
+# (platform/gateway/cluster-issuer.yaml), generated once on the host by
+# `make local-ca`. No ACME issuer: nothing here is reachable from the internet.
+# Not for production use: single replica.
+crds:
+  enabled: true

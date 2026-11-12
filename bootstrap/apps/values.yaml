@@ -5,12 +5,14 @@ targetRevision: main
 
 # Upstream chart versions, pinned. Keep in sync with the Makefile
 # (CROSSPLANE_VERSION, POSTGRES_CHART_VERSION, OPENBAO_CHART_VERSION,
-# ESO_CHART_VERSION) so both install paths deploy the same thing.
+# ESO_CHART_VERSION, CERT_MANAGER_CHART_VERSION, ENVOY_GATEWAY_CHART_VERSION) so both install paths deploy the same thing.
 charts:
   crossplane: 2.4.0
   postgresql: 18.12.15
   openbao: 0.30.4
   externalSecrets: 2.14.0
+  certManager: v1.21.3
+  envoyGateway: v1.9.3
 
 # Where the claims (Tenant, PostgresDatabase, ...) live. Removing a claim
 # there deletes the resource: the instances Application prunes.
