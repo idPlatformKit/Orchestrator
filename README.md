@@ -26,14 +26,17 @@ The whole thing runs **locally on kind in one command**, no cloud account needed
 
 ## Quick start
 
-Requires `kind`, `helm` and `kubectl`.
+Requires `kind`, `helm`, `kubectl` and `openssl`, and the host ports 80 and 443 free.
 
 ```sh
 make local-up                # kind cluster + Crossplane + providers + shared Postgres & OpenBao + compositions
 make try-tenant              # create a Tenant and show everything it produced
 make try-postgres-database   # create a logical Postgres database and print its connection Secret
+make local-ca-trust          # once per machine (sudo): trust the local CA behind the platform's HTTPS URLs
 make local-down              # clean up
 ```
+
+Platform UIs are served over HTTPS, no port-forwards: `https://openbao.127.0.0.1.nip.io` (and `https://argocd.127.0.0.1.nip.io` in the GitOps flow). See [docs/gateway.md](docs/gateway.md).
 
 Or let Argo CD install the same thing from this repo, the GitOps way:
 
@@ -55,6 +58,7 @@ See [docs/gitops.md](docs/gitops.md).
 - **Crossplane v2**: namespaced XRs and native Kubernetes resources composed directly, no `provider-kubernetes`.
 - **OpenBao instead of Vault**: real per-tenant Namespaces are free in OpenBao, Enterprise-only in Vault. Each tenant gets genuine isolation, not path prefixes on a shared mount.
 - **Optional features without duplicated Compositions**: the Vault add-on is toggled with `function-cel-filter`.
+- **HTTPS on kind with Gateway API**: Envoy Gateway, cert-manager and a local CA generated once on the host, on `*.127.0.0.1.nip.io` hostnames that need no DNS setup.
 - **One source of truth**: `providers/` and `compositions/` are kustomize bases shared by the local flow and the Argo CD flow.
 
 Full rationale in [docs/architecture.md](docs/architecture.md).
@@ -70,6 +74,7 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ Each tenant's Kubernetes and Crossplane resources visible in the portal (Backstage Kubernetes plugin, read-only access)
 - ✅ Tenant secrets delivered as Kubernetes `Secret`s by External Secrets Operator, from the tenant's own OpenBao namespace (cross-tenant access refused by OpenBao, tested)
 - ✅ Postgres databases added to a tenant from the portal (New Postgres database template), named `<namespace>_<name>` on the shared server so tenants can't collide ([#21](https://github.com/idPlatformKit/Orchestrator/issues/21))
+- ✅ HTTPS entry point: Gateway API (Envoy Gateway), cert-manager with a local CA, `https://<name>.127.0.0.1.nip.io` for OpenBao and Argo CD, end-to-end tested in CI ([#27](https://github.com/idPlatformKit/Orchestrator/issues/27))
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
@@ -79,7 +84,7 @@ Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed l
 2. **"New app" golden path**: from a form to a running app in a tenant, wired to its database and secrets ([#24](https://github.com/idPlatformKit/Orchestrator/issues/24)).
 3. **Per-tenant observability**: a Grafana dashboard for each tenant ([#25](https://github.com/idPlatformKit/Orchestrator/issues/25)).
 
-Beyond that, the longer-term roadmap runs from Milestone 4 to 13: HTTPS and certificates on kind, SSO with Dex, day-2 lifecycle and governance, the composition library as a product, developer experience, agentic development, tenancy tiers and multi-cluster, prod-like services, a cloud target, and AI platform services. Each milestone is a [`roadmap` issue](https://github.com/idPlatformKit/Orchestrator/issues?q=is%3Aissue%20label%3Aroadmap%20is%3Aopen), prefixed `[M4]` to `[M13]`.
+Beyond that, the longer-term roadmap runs from Milestone 4 to 13: HTTPS and certificates on kind (done), SSO with Dex, day-2 lifecycle and governance, the composition library as a product, developer experience, agentic development, tenancy tiers and multi-cluster, prod-like services, a cloud target, and AI platform services. Each milestone is a [`roadmap` issue](https://github.com/idPlatformKit/Orchestrator/issues?q=is%3Aissue%20label%3Aroadmap%20is%3Aopen), prefixed `[M4]` to `[M13]`.
 
 Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/issues).
 

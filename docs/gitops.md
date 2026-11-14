@@ -11,11 +11,10 @@ make try-tenant && make try-postgres-database        # same checks as the local 
 
 The branch must be pushed: Argo CD runs inside the cluster and reads Git, not your working tree.
 
-To reach the Argo CD UI:
+The Argo CD UI is at **https://argocd.127.0.0.1.nip.io**, behind the platform Gateway (see [gateway.md](gateway.md); run `make local-ca-trust` once so the browser trusts the certificate). User `admin`, password:
 
 ```sh
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
-kubectl -n argocd port-forward svc/argocd-server 8080:443   # https://localhost:8080, user admin
 ```
 
 ## Layout
@@ -34,6 +33,8 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | Wave | Application | Source |
 |---|---|---|
 | -2 | `crossplane` | Crossplane Helm chart 2.4.0 |
+| -2 | `cert-manager`, `envoy-gateway` | Upstream Helm charts + `platform/*/values.yaml` (Envoy Gateway from its OCI registry) |
+| -1 | `gateway`, `argocd-route` | `platform/gateway/` (platform Gateway, local CA issuer, wildcard certificate) and `bootstrap/argocd/route/`. See [gateway.md](gateway.md) |
 | -1 | `postgres-server`, `openbao-server` | Upstream Helm charts + `platform/*/values.yaml` from this repo |
 | 0 | `providers` | `providers/` kustomize base |
 | 1 | `compositions` | `compositions/` kustomize base |
@@ -41,17 +42,18 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | -1 | `backstage-reader` | `platform/backstage-reader/`: read-only ServiceAccount for the portal's Kubernetes plugin |
 | 2 | `instances` | The [instances](https://github.com/idPlatformKit/instances) repository: `Tenant` and `PostgresDatabase` claims |
 
-Chart versions are pinned in `bootstrap/apps/values.yaml` and in the Makefile (`CROSSPLANE_VERSION`, `POSTGRES_CHART_VERSION`, `OPENBAO_CHART_VERSION`). Keep both in sync.
+Chart versions are pinned in `bootstrap/apps/values.yaml` and in the Makefile (`CROSSPLANE_VERSION`, `POSTGRES_CHART_VERSION`, `OPENBAO_CHART_VERSION`, `ESO_CHART_VERSION`, `CERT_MANAGER_CHART_VERSION`, `ENVOY_GATEWAY_CHART_VERSION`). Keep both in sync.
 
 ## Bootstrap Secrets: deliberately not in Git
 
-Three Secrets hold dev-default credentials and are created by `make bootstrap-secrets` before Argo CD syncs anything, exactly as the local flow does:
+Four Secrets hold dev-default credentials and are created by `make bootstrap-secrets` before Argo CD syncs anything, exactly as the local flow does:
 
 | Secret | Namespace | Read by |
 |---|---|---|
 | `postgres-server-auth` | `postgres-system` | Postgres chart (`auth.existingSecret`) |
 | `postgres-admin-conn` | `postgres-system` | provider-sql `ClusterProviderConfig` |
 | `openbao-creds` | `openbao-system` | provider-vault `ClusterProviderConfig` |
+| `idplatformkit-local-ca` | `cert-manager` | cert-manager's local CA `ClusterIssuer`. The key pair is generated once on the host (`.local-ca/`, git-ignored), see [gateway.md](gateway.md) |
 
 This imperative step is a bootstrap stopgap: External Secrets Operator delivers *tenant* secrets, but the platform's own bootstrap credentials still have to exist before anything, ESO included, can run. The values are the same fixed local credentials as in the Makefile and are only meant for kind.
 
@@ -74,6 +76,8 @@ The `providers` app goes `Degraded` for one retry cycle, then the retry (10s bac
 **The root app is `Healthy` before it has done anything.** Right after creation it has no resources, so it reports `Healthy` while still `OutOfSync`. The first version of `make gitops-wait` waited on health only and returned immediately with the cluster half-installed. It now waits for `Synced` first, then `Healthy`.
 
 **...and it was still `Healthy` one wave too early.** With that fixed, a second run printed `compositions OutOfSync Missing` next to a `Synced`/`Healthy` root. A child Application that hasn't synced yet reports `Missing`, and Argo CD doesn't count `Missing` against the parent's aggregated health. The first version of the health check passed the child's status through as-is. It now maps `Missing` to `Progressing`. A run polled every 5 seconds afterwards showed the waves in order (crossplane → shared services → providers → compositions), with the root only `Synced`/`Healthy` once `compositions` was. As a final guard, `make gitops-wait` also waits for every Application to be `Healthy`.
+
+**A child app that is briefly `Degraded` can stop the whole bootstrap.** A sync wave fails when one of its Applications is `Degraded`. After adding Envoy Gateway, its Application went `Degraded` for about 3.5 minutes on a fresh cluster (see [gateway.md](gateway.md)). The root app failed that wave five times, gave up on the revision, and never created the later waves: `compositions` and `instances` were missing and `make gitops-wait` was left waiting on the root app. `bootstrap/root-app.yaml` now sets an explicit `retry` (15 attempts, backoff up to 3 minutes), like the `providers` and `instances` apps.
 
 **Argo CD's redis image is rate-limited in CI.** The chart pulls redis from ECR Public (`ecr-public.aws.com`), which limits anonymous pulls per IP. On shared GitHub Actions runners, the `gitops` e2e job failed intermittently, with redis stuck in `ImagePullBackOff` and helm timing out. A first guess blamed slow registries and only raised helm's timeout to 10 minutes, which didn't help. Once the CI debug step printed the pod events, the real error showed up:
 
