@@ -1,0 +1,36 @@
+# The IdPlatformKit portal, deployed in the cluster. Installed by
+# `make portal-install` (local flow) and by the `portal` Argo CD Application
+# (GitOps flow), which pass the installation's values from .idpk.env:
+# github.org and github.instancesRepo. Nothing installation-specific is
+# committed here.
+
+image:
+  repository: ghcr.io/idplatformkit/portal
+  tag: main
+  pullPolicy: IfNotPresent
+
+# Public URL of the portal, through the platform Gateway (platform/gateway/).
+# Also the base of the GitHub OAuth App's callback URL.
+baseUrl: https://portal.127.0.0.1.nip.io
+
+github:
+  # Required: the GitHub org whose members sign in and whose teams own tenants.
+  org: ""
+  # The org's instances repository (name only), where the templates open
+  # pull requests.
+  instancesRepo: instances
+
+# GITHUB_TOKEN, AUTH_GITHUB_CLIENT_ID and AUTH_GITHUB_CLIENT_SECRET. Created
+# by `make portal-secret` from .idpk.env, never committed.
+secretName: portal-secrets
+
+# The read-only ServiceAccount from platform/backstage-reader/: the
+# Kubernetes plugin reads the cluster with the pod's own identity.
+serviceAccountName: backstage-reader
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    memory: 1Gi

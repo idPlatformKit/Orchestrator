@@ -1,0 +1,31 @@
+# Wave 0: the portal (platform/portal/ chart), at https://portal.127.0.0.1.nip.io.
+# Needs the Gateway and the backstage-reader ServiceAccount (wave -1), and
+# the portal-secrets Secret created by `make bootstrap-secrets`.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: portal
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: platform/portal
+    helm:
+      releaseName: portal
+      valuesObject:
+        github:
+          org: {{ required "github.org is required: run `make setup`" .Values.github.org | quote }}
+          instancesRepo: {{ .Values.github.instancesRepo | quote }}
+        image:
+          tag: {{ .Values.portal.imageTag | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backstage-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

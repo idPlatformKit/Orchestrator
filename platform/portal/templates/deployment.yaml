@@ -1,0 +1,51 @@
+{{- if not .Values.github.org }}
+{{- fail "github.org is required: run `make setup`, or set it in .idpk.env" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: portal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: portal
+    spec:
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      containers:
+        - name: backstage
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 7007
+          env:
+            - name: PORTAL_BASE_URL
+              value: {{ .Values.baseUrl | quote }}
+            - name: IDPK_GITHUB_ORG
+              value: {{ .Values.github.org | quote }}
+            - name: IDPK_INSTANCES_REPO
+              value: {{ .Values.github.instancesRepo | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secretName }}
+          readinessProbe:
+            httpGet:
+              path: /.backstage/health/v1/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /.backstage/health/v1/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
