@@ -1,4 +1,4 @@
-# Wave 2: the claims, from the separate instances repository. Last, because
+# Wave 2: the claims, from the installation's instances repository. Last, because
 # a claim needs its XRD (wave 1) to exist. The retry covers a
 # PostgresDatabase whose namespace is created by its Tenant in the same sync.
 apiVersion: argoproj.io/v1alpha1
@@ -11,7 +11,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: {{ .Values.instances.repoURL }}
+    repoURL: {{ .Values.instances.repoURL | default (printf "https://github.com/%s/%s.git" (required "github.org is required: run `make setup`" .Values.github.org) .Values.github.instancesRepo) }}
     targetRevision: {{ .Values.instances.targetRevision }}
     path: .
     directory:

@@ -1,3 +1,11 @@
+# The installation: your GitHub org, its instances repository and the
+# portal's OAuth App. Written by `make setup` (git-ignored, never committed).
+-include .idpk.env
+IDPK_INSTANCES_REPO ?= instances
+export IDPK_GITHUB_ORG IDPK_INSTANCES_REPO AUTH_GITHUB_CLIENT_ID AUTH_GITHUB_CLIENT_SECRET
+# The portal image (ghcr.io/idplatformkit/portal), built by idPlatformKit/portal.
+PORTAL_IMAGE_TAG ?= main
+
 CLUSTER_NAME ?= idplatformkit-local
 CROSSPLANE_NAMESPACE ?= crossplane-system
 CROSSPLANE_VERSION ?= 2.4.0
@@ -28,7 +36,8 @@ ARGOCD_CHART_VERSION ?= 10.11.1
 GITOPS_REPO_URL ?= https://github.com/idPlatformKit/Orchestrator.git
 GITOPS_REVISION ?= main
 
-.PHONY: kind-up kind-down crossplane-install crossplane-uninstall \
+.PHONY: setup up down status require-config portal-secret portal-install \
+	kind-up kind-down crossplane-install crossplane-uninstall \
 	providers-apply openbao-providerconfig-apply \
 	postgres-server-install postgres-server-uninstall \
 	openbao-server-install openbao-server-uninstall \
@@ -40,6 +49,31 @@ GITOPS_REVISION ?= main
 	external-secrets-install external-secrets-uninstall \
 	local-ca local-ca-secret local-ca-trust local-ca-untrust \
 	cert-manager-install envoy-gateway-install gateway-apply try-gateway
+
+# --- Guided install (see docs/install.md) ---
+
+# Asks for your GitHub org, creates your instances repository from
+# idPlatformKit/instances-template and walks you through the portal's OAuth
+# App. Writes .idpk.env. Safe to re-run: it offers to keep what's there.
+setup:
+	@./scripts/setup.sh
+
+# The whole platform on a new kind cluster, from your configuration: Argo CD
+# installs everything from Git, then syncs your instances repository.
+up: require-config local-up-gitops status
+
+down: local-down
+
+# Where everything is, and what's left to do.
+status:
+	@./scripts/status.sh
+
+require-config:
+	@if [ -z "$(IDPK_GITHUB_ORG)" ]; then \
+		echo "No installation configured yet. Run 'make setup' first: it asks for your"; \
+		echo "GitHub org and writes .idpk.env."; \
+		exit 1; \
+	fi
 
 kind-up:
 	kind create cluster --name $(CLUSTER_NAME) --config local/kind-config.yaml
@@ -250,9 +284,40 @@ try-gateway:
 	@if kubectl get namespace $(ARGOCD_NAMESPACE) >/dev/null 2>&1; then \
 		echo "https://argocd.$(PLATFORM_DOMAIN) -> $$(curl -fsS --cacert $(LOCAL_CA_DIR)/ca.crt -o /dev/null -w '%{http_code}' https://argocd.$(PLATFORM_DOMAIN)/)"; \
 	fi
+	@if kubectl get deployment portal -n backstage-system >/dev/null 2>&1; then \
+		r=$$(curl -fsS --cacert $(LOCAL_CA_DIR)/ca.crt https://portal.$(PLATFORM_DOMAIN)/.backstage/health/v1/readiness) || exit 1; \
+		echo "https://portal.$(PLATFORM_DOMAIN) readiness -> $$r"; \
+	fi
 	@echo "Certificate served:"; \
 	openssl s_client -connect 127.0.0.1:443 -servername openbao.$(PLATFORM_DOMAIN) </dev/null 2>/dev/null | \
 		openssl x509 -noout -subject -issuer -ext subjectAltName
+
+# --- Portal (see platform/portal/) ---
+
+# The portal's credentials: the GitHub token its catalog reads the org with
+# (GITHUB_TOKEN, or your gh CLI token), and the OAuth App from .idpk.env.
+# A bootstrap Secret like the others: never in Git. Not echoed.
+portal-secret: require-config
+	@kubectl create namespace backstage-system --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@token="$${GITHUB_TOKEN:-$$(gh auth token 2>/dev/null)}"; \
+	if [ -z "$$token" ]; then \
+		echo "No GitHub token for the portal: run 'gh auth login', or set GITHUB_TOKEN."; exit 1; \
+	fi; \
+	kubectl create secret generic portal-secrets --namespace backstage-system \
+		--from-literal=GITHUB_TOKEN="$$token" \
+		--from-literal=AUTH_GITHUB_CLIENT_ID="$$AUTH_GITHUB_CLIENT_ID" \
+		--from-literal=AUTH_GITHUB_CLIENT_SECRET="$$AUTH_GITHUB_CLIENT_SECRET" \
+		--dry-run=client -o yaml | kubectl apply -f - >/dev/null && \
+	echo "secret/portal-secrets configured"
+
+# Local flow only: the GitOps flow installs the same chart with Argo CD.
+portal-install: portal-secret backstage-reader-apply
+	helm upgrade --install portal platform/portal \
+		--namespace backstage-system \
+		--set github.org=$(IDPK_GITHUB_ORG) \
+		--set github.instancesRepo=$(IDPK_INSTANCES_REPO) \
+		--set image.tag=$(PORTAL_IMAGE_TAG) \
+		--wait --timeout 5m
 
 compositions-apply:
 	kubectl apply -k compositions/
@@ -301,7 +366,7 @@ local-up: kind-up crossplane-install providers-apply postgres-server-install ope
 # Same end state as local-up, but only Argo CD and the bootstrap Secrets are
 # installed by hand; Argo CD installs everything else from this repo.
 
-bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets local-ca-secret
+bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets local-ca-secret portal-secret
 
 # --timeout 10m: helm's default 5m was hit in CI while the kind node was
 # still pulling Argo CD's images. The redis ImagePullBackOff seen there turned
@@ -319,9 +384,12 @@ argocd-install:
 
 # GITOPS_REPO_URL/GITOPS_REVISION let you point Argo CD at a fork or a
 # branch, e.g. `make local-up-gitops GITOPS_REVISION=my-branch`.
-gitops-root-apply:
+gitops-root-apply: require-config
 	sed -e 's|https://github.com/idPlatformKit/Orchestrator.git|$(GITOPS_REPO_URL)|' \
 		-e 's|targetRevision: main|targetRevision: $(GITOPS_REVISION)|' \
+		-e 's|__IDPK_GITHUB_ORG__|$(IDPK_GITHUB_ORG)|' \
+		-e 's|__IDPK_INSTANCES_REPO__|$(IDPK_INSTANCES_REPO)|' \
+		-e 's|__PORTAL_IMAGE_TAG__|$(PORTAL_IMAGE_TAG)|' \
 		bootstrap/root-app.yaml | kubectl apply -f -
 
 # Waits on the root app only: with the Application health check restored in
@@ -337,7 +405,7 @@ gitops-wait:
 		--for=jsonpath='{.status.health.status}'=Healthy --timeout=300s
 	kubectl get applications -n $(ARGOCD_NAMESPACE)
 
-local-up-gitops: kind-up argocd-install bootstrap-secrets gitops-root-apply gitops-wait
+local-up-gitops: require-config kind-up argocd-install bootstrap-secrets gitops-root-apply gitops-wait
 	@echo "Local cluster '$(CLUSTER_NAME)' is ready, bootstrapped by Argo CD from $(GITOPS_REPO_URL)@$(GITOPS_REVISION)."
 
 local-down: kind-down

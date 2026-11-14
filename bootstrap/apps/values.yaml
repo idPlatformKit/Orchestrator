@@ -14,8 +14,21 @@ charts:
   certManager: v1.21.3
   envoyGateway: v1.9.3
 
+# The installation: the GitHub org whose members use the portal and whose
+# teams own tenants, and its instances repository. Set by the root
+# Application from .idpk.env (`make setup`); no default on purpose.
+github:
+  org: ""
+  instancesRepo: instances
+
 # Where the claims (Tenant, PostgresDatabase, ...) live. Removing a claim
 # there deletes the resource: the instances Application prunes.
+# repoURL defaults to https://github.com/<github.org>/<github.instancesRepo>.git;
+# set it to sync another repository or a fork.
 instances:
-  repoURL: https://github.com/idPlatformKit/instances.git
+  repoURL: ""
   targetRevision: main
+
+# The portal image (ghcr.io/idplatformkit/portal), built by idPlatformKit/portal.
+portal:
+  imageTag: main
