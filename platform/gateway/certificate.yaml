@@ -1,0 +1,20 @@
+# One wildcard certificate for every platform hostname. nip.io resolves
+# <anything>.127.0.0.1.nip.io to 127.0.0.1, so no DNS setup is needed.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-tls
+  namespace: platform-gateway
+spec:
+  secretName: platform-tls
+  dnsNames:
+    - "*.127.0.0.1.nip.io"
+  # macOS rejects TLS server certificates without the serverAuth extended
+  # key usage.
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+  issuerRef:
+    kind: ClusterIssuer
+    name: idplatformkit-local-ca

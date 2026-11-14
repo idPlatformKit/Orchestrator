@@ -38,6 +38,7 @@ flowchart TB
         PG[(shared Postgres server)]
         OB[(shared OpenBao server)]
         ESO[External Secrets Operator]
+        GW[Envoy Gateway + cert-manager: HTTPS entry point]
     end
     subgraph L2["Composition library (compositions/)"]
         XRD1[PostgresDatabase XRD + Composition]
@@ -91,6 +92,10 @@ Two "foundational infrastructure" servers, installed directly via Helm (not prov
 
 - `platform/postgres-server/` — Bitnami `postgresql` chart. One shared server; `PostgresDatabase` claims get a logical database + role on it (see [compositions/postgres-database.md](compositions/postgres-database.md)).
 - `platform/openbao-server/` — [OpenBao](https://openbao.org/) (not HashiCorp Vault) in dev mode. Chosen specifically because it ships real Vault **Namespaces** — genuine per-tenant secrets isolation — free in its community edition, where Vault gates that behind Enterprise. See [compositions/tenant.md](compositions/tenant.md) for why that distinction mattered here.
+
+### HTTPS entry point (`platform/gateway/`)
+
+Every platform UI is served over HTTPS on `https://<name>.127.0.0.1.nip.io`, through one Gateway API `Gateway` implemented by Envoy Gateway, with a wildcard certificate that cert-manager signs with a local CA. kind maps the host's ports 80/443 to the Envoy Service's fixed NodePorts. The CA is generated once on the host and loaded as a bootstrap Secret, so it is trusted once per machine. Same dev-only tier as the other platform services. Details and gotchas in [gateway.md](gateway.md).
 
 ## Composition library (`compositions/`)
 

@@ -1,0 +1,16 @@
+# The platform's single HTTPS entry point on kind: one Gateway serving
+# *.127.0.0.1.nip.io with a wildcard certificate signed by the local CA.
+# Shared by the local flow (`make gateway-apply`) and the GitOps flow (the
+# `gateway` Application). Needs cert-manager and Envoy Gateway (their CRDs),
+# and the local CA Secret created by `make local-ca-secret`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - cluster-issuer.yaml
+  - certificate.yaml
+  - envoyproxy.yaml
+  - gatewayclass.yaml
+  - gateway.yaml
+  - http-redirect.yaml
+  - openbao-route.yaml

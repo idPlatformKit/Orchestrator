@@ -6,6 +6,14 @@ CROSSPLANE_VERSION ?= 2.4.0
 POSTGRES_CHART_VERSION ?= 18.12.15
 OPENBAO_CHART_VERSION ?= 0.30.4
 ESO_CHART_VERSION ?= 2.14.0
+CERT_MANAGER_CHART_VERSION ?= v1.21.3
+ENVOY_GATEWAY_CHART_VERSION ?= v1.9.3
+
+# Local CA signing the platform's HTTPS certificates. Generated once, kept
+# outside the cluster so it survives `make local-down` (see local-ca below).
+LOCAL_CA_DIR ?= .local-ca
+LOCAL_CA_SECRET ?= idplatformkit-local-ca
+PLATFORM_DOMAIN ?= 127.0.0.1.nip.io
 
 POSTGRES_NAMESPACE ?= postgres-system
 POSTGRES_RELEASE ?= postgres-server
@@ -29,7 +37,9 @@ GITOPS_REVISION ?= main
 	postgres-bootstrap-secrets openbao-bootstrap-secrets bootstrap-secrets \
 	argocd-install gitops-root-apply gitops-wait local-up-gitops \
 	backstage-reader-apply backstage-token \
-	external-secrets-install external-secrets-uninstall
+	external-secrets-install external-secrets-uninstall \
+	local-ca local-ca-secret local-ca-trust local-ca-untrust \
+	cert-manager-install envoy-gateway-install gateway-apply try-gateway
 
 kind-up:
 	kind create cluster --name $(CLUSTER_NAME) --config local/kind-config.yaml
@@ -153,6 +163,97 @@ external-secrets-install:
 external-secrets-uninstall:
 	helm uninstall external-secrets --namespace external-secrets
 
+# --- HTTPS entry point (see docs/gateway.md) ---
+
+# A root CA for the local platform, generated once on the host and reused by
+# every cluster you create (.local-ca/, git-ignored). Delete the directory to
+# rotate it, then trust the new one again.
+local-ca:
+	@if [ -f $(LOCAL_CA_DIR)/ca.crt ]; then \
+		echo "Reusing the local CA in $(LOCAL_CA_DIR)/"; \
+	else \
+		mkdir -p $(LOCAL_CA_DIR) && \
+		openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+			-subj "/O=IdPlatformKit/CN=IdPlatformKit local CA" \
+			-addext "basicConstraints=critical,CA:TRUE" \
+			-addext "keyUsage=critical,keyCertSign,cRLSign" \
+			-keyout $(LOCAL_CA_DIR)/ca.key -out $(LOCAL_CA_DIR)/ca.crt && \
+		chmod 600 $(LOCAL_CA_DIR)/ca.key && \
+		echo "Generated a new local CA in $(LOCAL_CA_DIR)/. Trust it once with: make local-ca-trust"; \
+	fi
+
+# The CA key pair cert-manager's ClusterIssuer signs with
+# (platform/gateway/cluster-issuer.yaml). A bootstrap Secret, like the
+# Postgres and OpenBao ones: never in Git.
+local-ca-secret: local-ca
+	kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create secret tls $(LOCAL_CA_SECRET) \
+		--namespace cert-manager \
+		--cert=$(LOCAL_CA_DIR)/ca.crt --key=$(LOCAL_CA_DIR)/ca.key \
+		--dry-run=client -o yaml | kubectl apply -f -
+
+# Adds the local CA to the host's trust store (asks for sudo). Once per CA,
+# not per cluster. Firefox keeps its own store: import ca.crt there by hand.
+local-ca-trust: local-ca
+	@case "$$(uname -s)" in \
+		Darwin) sudo security add-trusted-cert -d -r trustRoot \
+			-k /Library/Keychains/System.keychain $(LOCAL_CA_DIR)/ca.crt ;; \
+		Linux) sudo cp $(LOCAL_CA_DIR)/ca.crt /usr/local/share/ca-certificates/idplatformkit-local-ca.crt && \
+			sudo update-ca-certificates ;; \
+		*) echo "Unsupported OS: trust $(LOCAL_CA_DIR)/ca.crt by hand" && exit 1 ;; \
+	esac
+
+local-ca-untrust:
+	@case "$$(uname -s)" in \
+		Darwin) sudo security remove-trusted-cert -d $(LOCAL_CA_DIR)/ca.crt && \
+			sudo security delete-certificate -c "IdPlatformKit local CA" /Library/Keychains/System.keychain ;; \
+		Linux) sudo rm -f /usr/local/share/ca-certificates/idplatformkit-local-ca.crt && \
+			sudo update-ca-certificates --fresh ;; \
+		*) echo "Unsupported OS" && exit 1 ;; \
+	esac
+
+cert-manager-install: local-ca-secret
+	helm repo add jetstack https://charts.jetstack.io --force-update
+	helm repo update jetstack
+	helm upgrade --install cert-manager jetstack/cert-manager \
+		--namespace cert-manager \
+		--create-namespace \
+		--version $(CERT_MANAGER_CHART_VERSION) \
+		--values platform/cert-manager/values.yaml \
+		--wait
+
+envoy-gateway-install:
+	helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+		--namespace envoy-gateway-system \
+		--create-namespace \
+		--version $(ENVOY_GATEWAY_CHART_VERSION) \
+		--values platform/envoy-gateway/values.yaml \
+		--wait
+
+# Retried: cert-manager's webhook can refuse requests for a few seconds after
+# its Deployment reports Ready.
+gateway-apply:
+	@for i in 1 2 3 4 5 6; do \
+		kubectl apply -k platform/gateway/ && break; \
+		[ $$i -eq 6 ] && exit 1; echo "Retrying in 10s..."; sleep 10; \
+	done
+	kubectl wait --for=condition=Ready --timeout=120s \
+		certificate/platform-tls -n platform-gateway
+	kubectl wait --for=condition=Programmed --timeout=180s \
+		gateway/platform -n platform-gateway
+
+# Checks the platform hostnames from the host, verifying the certificate
+# against the local CA only (not the system trust store).
+try-gateway:
+	@echo "http://openbao.$(PLATFORM_DOMAIN) -> $$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://openbao.$(PLATFORM_DOMAIN)/)"
+	curl -fsS --cacert $(LOCAL_CA_DIR)/ca.crt https://openbao.$(PLATFORM_DOMAIN)/v1/sys/health; echo
+	@if kubectl get namespace $(ARGOCD_NAMESPACE) >/dev/null 2>&1; then \
+		echo "https://argocd.$(PLATFORM_DOMAIN) -> $$(curl -fsS --cacert $(LOCAL_CA_DIR)/ca.crt -o /dev/null -w '%{http_code}' https://argocd.$(PLATFORM_DOMAIN)/)"; \
+	fi
+	@echo "Certificate served:"; \
+	openssl s_client -connect 127.0.0.1:443 -servername openbao.$(PLATFORM_DOMAIN) </dev/null 2>/dev/null | \
+		openssl x509 -noout -subject -issuer -ext subjectAltName
+
 compositions-apply:
 	kubectl apply -k compositions/
 
@@ -193,14 +294,14 @@ backstage-token:
 	@echo "export K8S_CLUSTER_URL=$$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
 	@echo "export K8S_CLUSTER_TOKEN=$$(kubectl get secret backstage-reader-token -n backstage-system -o jsonpath='{.data.token}' | base64 -d)"
 
-local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply external-secrets-install compositions-apply backstage-reader-apply
-	@echo "Local cluster '$(CLUSTER_NAME)' is ready: Crossplane, provider-sql, provider-vault, the shared Postgres server, and the shared OpenBao server are installed, compositions applied."
+local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply external-secrets-install cert-manager-install envoy-gateway-install gateway-apply compositions-apply backstage-reader-apply
+	@echo "Local cluster '$(CLUSTER_NAME)' is ready: Crossplane, provider-sql, provider-vault, the shared Postgres server, and the shared OpenBao server are installed, compositions applied, HTTPS on https://<name>.$(PLATFORM_DOMAIN)."
 
 # --- GitOps flow (see docs/gitops.md) ---
 # Same end state as local-up, but only Argo CD and the bootstrap Secrets are
 # installed by hand; Argo CD installs everything else from this repo.
 
-bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets
+bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets local-ca-secret
 
 # --timeout 10m: helm's default 5m was hit in CI while the kind node was
 # still pulling Argo CD's images. The redis ImagePullBackOff seen there turned

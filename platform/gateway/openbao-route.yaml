@@ -1,0 +1,17 @@
+# https://openbao.127.0.0.1.nip.io: the shared OpenBao server's API and UI.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openbao
+  namespace: openbao-system
+spec:
+  parentRefs:
+    - name: platform
+      namespace: platform-gateway
+      sectionName: https
+  hostnames:
+    - openbao.127.0.0.1.nip.io
+  rules:
+    - backendRefs:
+        - name: openbao
+          port: 8200

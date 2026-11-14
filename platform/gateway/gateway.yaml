@@ -1,0 +1,30 @@
+# The platform Gateway. Platform services attach HTTPRoutes to the `https`
+# listener from their own namespace. Routes are accepted from every namespace:
+# fine for a single-user kind cluster, to be restricted once tenants can
+# publish their own routes.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform
+  namespace: platform-gateway
+spec:
+  gatewayClassName: envoy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.127.0.0.1.nip.io"
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.127.0.0.1.nip.io"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: platform-tls
+      allowedRoutes:
+        namespaces:
+          from: All

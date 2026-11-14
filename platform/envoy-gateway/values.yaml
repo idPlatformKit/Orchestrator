@@ -1,0 +1,7 @@
+# Envoy Gateway chart values: the controller implementing Gateway API on kind.
+# The chart also installs the Gateway API CRDs (crds.enabled, the default).
+# How the Envoy proxy itself is exposed (fixed NodePorts mapped by kind) is
+# set per GatewayClass in platform/gateway/envoyproxy.yaml, not here.
+# Not for production use: single replica, default settings.
+deployment:
+  replicas: 1

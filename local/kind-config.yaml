@@ -3,3 +3,16 @@ apiVersion: kind.x-k8s.io/v1alpha4
 name: idplatformkit-local
 nodes:
   - role: control-plane
+    # Host ports 80/443 -> the Envoy Gateway Service's fixed NodePorts (see
+    # platform/gateway/envoyproxy.yaml), so https://<name>.127.0.0.1.nip.io
+    # reaches the platform Gateway without port-forwards. Bound to 127.0.0.1
+    # only: nothing is exposed on the host's network.
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 80
+        listenAddress: 127.0.0.1
+        protocol: TCP
+      - containerPort: 30443
+        hostPort: 443
+        listenAddress: 127.0.0.1
+        protocol: TCP

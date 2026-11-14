@@ -24,3 +24,14 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    # A sync wave fails when one of its child apps is Degraded, and a child can
+    # be Degraded for a few minutes on a fresh cluster (providers before its
+    # ClusterProviderConfig CRDs exist, envoy-gateway while it starts: see
+    # docs/gitops.md). Without an explicit retry the root app gave up after 5
+    # attempts and never synced the later waves of that revision.
+    retry:
+      limit: 15
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
