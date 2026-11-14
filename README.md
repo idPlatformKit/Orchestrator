@@ -24,6 +24,8 @@ spec:
 
 The whole thing runs **locally on kind in one command**, no cloud account needed.
 
+**Website: [idplatformkit.github.io](https://idplatformkit.github.io)**, with the architecture, the design decisions, a recorded demo and how to run it.
+
 ## Quick start
 
 Requires `kind`, `helm`, `kubectl` and `openssl`, and the host ports 80 and 443 free.
