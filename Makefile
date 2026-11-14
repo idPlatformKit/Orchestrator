@@ -4,7 +4,8 @@
 IDPK_INSTANCES_REPO ?= instances
 export IDPK_GITHUB_ORG IDPK_INSTANCES_REPO AUTH_GITHUB_CLIENT_ID AUTH_GITHUB_CLIENT_SECRET
 # The portal image (ghcr.io/idplatformkit/portal), built by idPlatformKit/portal.
-PORTAL_IMAGE_TAG ?= main
+# Pinned like the charts: keep in sync with bootstrap/apps/values.yaml.
+PORTAL_IMAGE_TAG ?= sha-9c2d3c6
 
 CLUSTER_NAME ?= idplatformkit-local
 CROSSPLANE_NAMESPACE ?= crossplane-system
