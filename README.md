@@ -98,9 +98,11 @@ Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/is
 | **Orchestrator** | Platform orchestrator (Crossplane compositions) |
 | [instances](https://github.com/idPlatformKit/instances) | Claims (`Tenant`, `PostgresDatabase`), synced by Argo CD |
 
-Write-ups:
-- TODO_TITRE_ARTICLE_1 : TODO_LIEN_1
-- TODO_TITRE_ARTICLE_2 : TODO_LIEN_2
+Write-ups, on the Backstage foundations of the portal:
+- [Backstage.io Series, Part 1: Getting Started & Setting Up PostgreSQL](https://antoyavin.github.io/writing/backstage-series-part-1-getting-started/)
+- [Backstage.io Series, Part 2: GitHub Authentication & User Ingestion](https://antoyavin.github.io/writing/backstage-series-part-2-github-auth/)
+
+More on [Anas Touil's blog](https://antoyavin.github.io/writing/).
 
 ## License
 
