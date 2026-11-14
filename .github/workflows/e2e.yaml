@@ -25,6 +25,9 @@ jobs:
       - name: Bootstrap the platform
         run: make local-up
 
+      - name: HTTPS entry point (Gateway, local CA)
+        run: make try-gateway
+
       - name: Tenant composition
         run: make try-tenant
 
@@ -38,6 +41,8 @@ jobs:
           kubectl get composite,managed -A || true
           kubectl describe -f examples/tenant.yaml || true
           kubectl describe -f examples/postgres-database.yaml || true
+          kubectl get gatewayclass,gateway,httproute -A || true
+          kubectl get certificate,clusterissuer -A || true
           kubectl get pods -A || true
           kubectl logs -n crossplane-system deploy/crossplane --tail=200 || true
 
@@ -62,6 +67,9 @@ jobs:
       - name: Bootstrap the platform with Argo CD
         run: make local-up-gitops
 
+      - name: HTTPS entry point (Gateway, local CA, Argo CD route)
+        run: make try-gateway
+
       - name: Tenant composition
         run: make try-tenant
 
@@ -77,5 +85,7 @@ jobs:
           kubectl describe pods -n argocd || true
           kubectl get providers,functions -o wide || true
           kubectl get composite,managed -A || true
+          kubectl get gatewayclass,gateway,httproute -A || true
+          kubectl get certificate,clusterissuer -A || true
           kubectl get pods -A || true
           kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 || true
