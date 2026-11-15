@@ -26,27 +26,29 @@ The whole thing runs **locally on kind in one command**, no cloud account needed
 
 **Website: [idplatformkit.github.io](https://idplatformkit.github.io)**, with the architecture, the design decisions, a recorded demo and how to run it.
 
-## Quick start
+## Install
 
-Requires `kind`, `helm`, `kubectl` and `openssl`, and the host ports 80 and 443 free.
+IdPlatformKit runs on **your own GitHub org**: its members sign in to the portal, its teams own the tenants, and your own instances repository holds the claims.
+
+```sh
+make setup    # checks your machine, then prepares your GitHub org: instances repository, OAuth App (guided)
+make up       # the whole platform on kind, installed by Argo CD from Git (about 5 minutes)
+```
+
+Then open **https://portal.127.0.0.1.nip.io**, sign in with GitHub and create a tenant. `make status` shows every URL and what's left to do; `make down` deletes the cluster. Requires Docker, `kind`, `kubectl`, `helm`, `openssl` and the GitHub CLI; `make setup` checks them. Full guide: [docs/install.md](docs/install.md).
+
+Platform UIs are served over HTTPS, no port-forwards: the portal, `https://argocd.127.0.0.1.nip.io` and `https://openbao.127.0.0.1.nip.io`. See [docs/gateway.md](docs/gateway.md) and [docs/gitops.md](docs/gitops.md).
+
+### Just the compositions
+
+To try the Crossplane compositions without Argo CD, the portal or a GitHub org:
 
 ```sh
 make local-up                # kind cluster + Crossplane + providers + shared Postgres & OpenBao + compositions
 make try-tenant              # create a Tenant and show everything it produced
 make try-postgres-database   # create a logical Postgres database and print its connection Secret
-make local-ca-trust          # once per machine (sudo): trust the local CA behind the platform's HTTPS URLs
 make local-down              # clean up
 ```
-
-Platform UIs are served over HTTPS, no port-forwards: `https://openbao.127.0.0.1.nip.io` (and `https://argocd.127.0.0.1.nip.io` in the GitOps flow). See [docs/gateway.md](docs/gateway.md).
-
-Or let Argo CD install the same thing from this repo, the GitOps way:
-
-```sh
-make local-up-gitops         # kind + Argo CD, which syncs the platform from this repo and the claims from idPlatformKit/instances
-```
-
-See [docs/gitops.md](docs/gitops.md).
 
 ## Composition library
 
@@ -76,6 +78,7 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ Each tenant's Kubernetes and Crossplane resources visible in the portal (Backstage Kubernetes plugin, read-only access)
 - ✅ Tenant secrets delivered as Kubernetes `Secret`s by External Secrets Operator, from the tenant's own OpenBao namespace (cross-tenant access refused by OpenBao, tested)
 - ✅ Postgres databases added to a tenant from the portal (New Postgres database template), named `<namespace>_<name>` on the shared server so tenants can't collide ([#21](https://github.com/idPlatformKit/Orchestrator/issues/21))
+- ✅ Install on your own GitHub org in two commands (`make setup`, `make up`), with the portal running in the cluster. Verified end to end on a second org ([#45](https://github.com/idPlatformKit/Orchestrator/issues/45))
 - ✅ HTTPS entry point: Gateway API (Envoy Gateway), cert-manager with a local CA, `https://<name>.127.0.0.1.nip.io` for OpenBao and Argo CD, end-to-end tested in CI ([#27](https://github.com/idPlatformKit/Orchestrator/issues/27))
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
@@ -94,9 +97,10 @@ Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/is
 
 | Repo | Role |
 |---|---|
-| [portal](https://github.com/idPlatformKit/portal) | Developer portal (Backstage, GitHub auth, org/group sync) |
+| [portal](https://github.com/idPlatformKit/portal) | Developer portal (Backstage, GitHub auth, org/group sync), runs in the cluster |
 | **Orchestrator** | Platform orchestrator (Crossplane compositions) |
-| [instances](https://github.com/idPlatformKit/instances) | Claims (`Tenant`, `PostgresDatabase`), synced by Argo CD |
+| [instances-template](https://github.com/idPlatformKit/instances-template) | Starting point of each installation's instances repository |
+| [instances](https://github.com/idPlatformKit/instances) | The demo installation's claims (`Tenant`, `PostgresDatabase`), synced by Argo CD |
 
 Write-ups, on the Backstage foundations of the portal:
 - [Backstage.io Series, Part 1: Getting Started & Setting Up PostgreSQL](https://antoyavin.github.io/writing/backstage-series-part-1-getting-started/)

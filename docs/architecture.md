@@ -39,6 +39,7 @@ flowchart TB
         OB[(shared OpenBao server)]
         ESO[External Secrets Operator]
         GW[Envoy Gateway + cert-manager: HTTPS entry point]
+        PORTAL[Portal: Backstage, in the cluster]
     end
     subgraph L2["Composition library (compositions/)"]
         XRD1[PostgresDatabase XRD + Composition]
@@ -96,6 +97,10 @@ Two "foundational infrastructure" servers, installed directly via Helm (not prov
 ### HTTPS entry point (`platform/gateway/`)
 
 Every platform UI is served over HTTPS on `https://<name>.127.0.0.1.nip.io`, through one Gateway API `Gateway` implemented by Envoy Gateway, with a wildcard certificate that cert-manager signs with a local CA. kind maps the host's ports 80/443 to the Envoy Service's fixed NodePorts. The CA is generated once on the host and loaded as a bootstrap Secret, so it is trusted once per machine. Same dev-only tier as the other platform services. Details and gotchas in [gateway.md](gateway.md).
+
+### Portal (`platform/portal/`)
+
+The developer portal ([idPlatformKit/portal](https://github.com/idPlatformKit/portal), Backstage) runs in the cluster from its published image, `ghcr.io/idplatformkit/portal`, at `https://portal.127.0.0.1.nip.io`. A small Helm chart, used by both install flows, passes it the installation's GitHub org and instances repository; its OAuth App and GitHub token come from the `portal-secrets` bootstrap Secret. It reads the cluster with its pod's ServiceAccount, the read-only `backstage-reader`. Installing on your own org: [install.md](install.md).
 
 ## Composition library (`compositions/`)
 

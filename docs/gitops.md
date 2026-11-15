@@ -1,9 +1,11 @@
 # GitOps bootstrap (Argo CD)
 
-`make local-up-gitops` reaches the same end state as `make local-up` (Crossplane, providers, functions, the shared Postgres and OpenBao servers, the composition library), but only Argo CD and a few bootstrap Secrets are installed by hand. Argo CD installs everything else from this repository and keeps it in sync. It then provisions the claims declared in the separate [instances](https://github.com/idPlatformKit/instances) repository.
+`make local-up-gitops` reaches the same end state as `make local-up` (Crossplane, providers, functions, the shared Postgres and OpenBao servers, the composition library), but only Argo CD and a few bootstrap Secrets are installed by hand. Argo CD installs everything else from this repository and keeps it in sync. It then provisions the claims declared in your installation's instances repository, and runs the portal.
+
+`make up` is this flow plus `make status`, and the normal way to install: see [install.md](install.md). Both need the installation's configuration, `.idpk.env`, written by `make setup`.
 
 ```sh
-make local-up-gitops                                 # tracks main
+make up                                              # tracks main (= make local-up-gitops + make status)
 make local-up-gitops GITOPS_REVISION=my-branch       # test a pushed branch
 make local-up-gitops GITOPS_REPO_URL=https://github.com/<you>/Orchestrator.git GITOPS_REVISION=my-branch
 make try-tenant && make try-postgres-database        # same checks as the local flow
@@ -37,16 +39,17 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | -1 | `gateway`, `argocd-route` | `platform/gateway/` (platform Gateway, local CA issuer, wildcard certificate) and `bootstrap/argocd/route/`. See [gateway.md](gateway.md) |
 | -1 | `postgres-server`, `openbao-server` | Upstream Helm charts + `platform/*/values.yaml` from this repo |
 | 0 | `providers` | `providers/` kustomize base |
+| 0 | `portal` | `platform/portal/` chart: the portal at `https://portal.127.0.0.1.nip.io`, with the installation's org and instances repository |
 | 1 | `compositions` | `compositions/` kustomize base |
 | -1 | `external-secrets` | External Secrets Operator Helm chart + `platform/external-secrets/values.yaml` |
 | -1 | `backstage-reader` | `platform/backstage-reader/`: read-only ServiceAccount for the portal's Kubernetes plugin |
-| 2 | `instances` | The [instances](https://github.com/idPlatformKit/instances) repository: `Tenant` and `PostgresDatabase` claims |
+| 2 | `instances` | The installation's instances repository, `https://github.com/<org>/<repo>.git`: `Tenant` and `PostgresDatabase` claims |
 
 Chart versions are pinned in `bootstrap/apps/values.yaml` and in the Makefile (`CROSSPLANE_VERSION`, `POSTGRES_CHART_VERSION`, `OPENBAO_CHART_VERSION`, `ESO_CHART_VERSION`, `CERT_MANAGER_CHART_VERSION`, `ENVOY_GATEWAY_CHART_VERSION`). Keep both in sync.
 
 ## Bootstrap Secrets: deliberately not in Git
 
-Four Secrets hold dev-default credentials and are created by `make bootstrap-secrets` before Argo CD syncs anything, exactly as the local flow does:
+Five Secrets hold dev-default credentials or the installation's own and are created by `make bootstrap-secrets` before Argo CD syncs anything, exactly as the local flow does:
 
 | Secret | Namespace | Read by |
 |---|---|---|
@@ -54,6 +57,7 @@ Four Secrets hold dev-default credentials and are created by `make bootstrap-sec
 | `postgres-admin-conn` | `postgres-system` | provider-sql `ClusterProviderConfig` |
 | `openbao-creds` | `openbao-system` | provider-vault `ClusterProviderConfig` |
 | `idplatformkit-local-ca` | `cert-manager` | cert-manager's local CA `ClusterIssuer`. The key pair is generated once on the host (`.local-ca/`, git-ignored), see [gateway.md](gateway.md) |
+| `portal-secrets` | `backstage-system` | The portal: your OAuth App (from `.idpk.env`) and the GitHub token its catalog reads the org with (your `gh` token, or `GITHUB_TOKEN`) |
 
 This imperative step is a bootstrap stopgap: External Secrets Operator delivers *tenant* secrets, but the platform's own bootstrap credentials still have to exist before anything, ESO included, can run. The values are the same fixed local credentials as in the Makefile and are only meant for kind.
 
@@ -92,7 +96,7 @@ toomanyrequests: Data limit exceeded
 
 ## Claims from the instances repository
 
-The `instances` Application syncs [idPlatformKit/instances](https://github.com/idPlatformKit/instances) (`main`) with `prune` and `selfHeal`. That repository validates every claim against this repo's XRDs in CI (`crossplane resource validate`), so a broken claim is caught in the pull request, before Argo CD sees it. Its location is set in `bootstrap/apps/values.yaml` (`instances.repoURL`, `instances.targetRevision`).
+The `instances` Application syncs the installation's instances repository (`main`) with `prune` and `selfHeal`: `https://github.com/<github.org>/<github.instancesRepo>.git`, from the values `make gitops-root-apply` puts in the root Application from `.idpk.env`. Set `instances.repoURL` to sync another repository. Each instances repository, created from [instances-template](https://github.com/idPlatformKit/instances-template), validates every claim against this repo's XRDs in CI (`crossplane resource validate`), so a broken claim is caught in the pull request, before Argo CD sees it. The project's own demo installation uses [idPlatformKit/instances](https://github.com/idPlatformKit/instances), and so does CI.
 
 What was observed on a fresh kind cluster with the `checkout` example claims (a `Tenant` and a `PostgresDatabase` in the `checkout` namespace):
 
