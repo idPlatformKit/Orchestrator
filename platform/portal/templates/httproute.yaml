@@ -1,0 +1,17 @@
+# https://portal.127.0.0.1.nip.io, behind the platform Gateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: portal
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: platform
+      namespace: platform-gateway
+      sectionName: https
+  hostnames:
+    - {{ .Values.baseUrl | trimPrefix "https://" | quote }}
+  rules:
+    - backendRefs:
+        - name: portal
+          port: 80

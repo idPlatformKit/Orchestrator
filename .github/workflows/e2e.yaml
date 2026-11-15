@@ -8,6 +8,16 @@ on:
   schedule:
     - cron: "0 6 * * 1"   # weekly, catches upstream chart/image breakage
 
+# CI installs the project's own demo installation: the idPlatformKit org and
+# its instances repository. The portal's sign-in isn't exercised (no OAuth
+# App here); its GitHub token is the workflow's.
+env:
+  IDPK_GITHUB_ORG: idPlatformKit
+  IDPK_INSTANCES_REPO: instances
+  AUTH_GITHUB_CLIENT_ID: ci-not-used
+  AUTH_GITHUB_CLIENT_SECRET: ci-not-used
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   kind:
     runs-on: ubuntu-latest
@@ -25,7 +35,10 @@ jobs:
       - name: Bootstrap the platform
         run: make local-up
 
-      - name: HTTPS entry point (Gateway, local CA)
+      - name: Portal
+        run: make portal-install
+
+      - name: HTTPS entry point (Gateway, local CA, portal)
         run: make try-gateway
 
       - name: Tenant composition
@@ -43,6 +56,8 @@ jobs:
           kubectl describe -f examples/postgres-database.yaml || true
           kubectl get gatewayclass,gateway,httproute -A || true
           kubectl get certificate,clusterissuer -A || true
+          kubectl describe pods -n backstage-system || true
+          kubectl logs -n backstage-system deploy/portal --tail=100 || true
           kubectl get pods -A || true
           kubectl logs -n crossplane-system deploy/crossplane --tail=200 || true
 
@@ -67,7 +82,7 @@ jobs:
       - name: Bootstrap the platform with Argo CD
         run: make local-up-gitops
 
-      - name: HTTPS entry point (Gateway, local CA, Argo CD route)
+      - name: HTTPS entry point (Gateway, local CA, Argo CD, portal)
         run: make try-gateway
 
       - name: Tenant composition
@@ -87,5 +102,7 @@ jobs:
           kubectl get composite,managed -A || true
           kubectl get gatewayclass,gateway,httproute -A || true
           kubectl get certificate,clusterissuer -A || true
+          kubectl describe pods -n backstage-system || true
+          kubectl logs -n backstage-system deploy/portal --tail=100 || true
           kubectl get pods -A || true
           kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 || true

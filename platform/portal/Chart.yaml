@@ -1,0 +1,5 @@
+apiVersion: v2
+name: portal
+description: The IdPlatformKit portal (Backstage), served at https://portal.127.0.0.1.nip.io
+type: application
+version: 0.1.0

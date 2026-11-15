@@ -1,7 +1,8 @@
 # The only object applied by hand (`make gitops-root-apply`). Everything
 # else is an Argo CD Application rendered from bootstrap/apps/ -- the
 # "app of apps" pattern. repoURL/targetRevision are overridable from the
-# Makefile (GITOPS_REPO_URL, GITOPS_REVISION) to test a branch.
+# Makefile (GITOPS_REPO_URL, GITOPS_REVISION) to test a branch; the
+# installation's GitHub org and instances repository come from .idpk.env.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,6 +18,13 @@ spec:
       valuesObject:
         repoURL: https://github.com/idPlatformKit/Orchestrator.git
         targetRevision: main
+        # The installation, from .idpk.env (`make setup`). Replaced by
+        # `make gitops-root-apply`, which refuses to run without them.
+        github:
+          org: __IDPK_GITHUB_ORG__
+          instancesRepo: __IDPK_INSTANCES_REPO__
+        portal:
+          imageTag: __PORTAL_IMAGE_TAG__
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
