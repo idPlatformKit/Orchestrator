@@ -360,6 +360,129 @@ spec:
                   type: Ready
                   status: "True"
 
+          # People: the team owning the tenant reads and writes its secrets
+          # in OpenBao's UI or CLI, signed in with GitHub through Dex (the
+          # oidc auth method, platform/openbao-sso/), with the role
+          # tenant-<name>. Both objects live in OpenBao's ROOT namespace,
+          # where that auth method is: a root-namespace policy reaches the
+          # tenant's namespace through its path prefix (<name>/secret/...),
+          # and nothing else. Deleted with the Tenant.
+          - name: vault-oidc-policy
+            base:
+              apiVersion: vault.vault.m.upbound.io/v1alpha1
+              kind: Policy
+              spec:
+                forProvider:
+                  name: placeholder
+                  policy: placeholder
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-team"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "tenant-%s"
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: metadata.name
+                    - fromFieldPath: metadata.name
+                    - fromFieldPath: metadata.name
+                  strategy: string
+                  string:
+                    fmt: |
+                      path "%s/secret/*" {
+                        capabilities = ["create", "read", "update", "patch", "delete", "list"]
+                      }
+                      # The UI lists the namespace's mounts to show them.
+                      path "%s/sys/internal/ui/mounts" {
+                        capabilities = ["read"]
+                      }
+                      path "%s/sys/internal/ui/mounts/*" {
+                        capabilities = ["read"]
+                      }
+                toFieldPath: spec.forProvider.policy
+
+          # Dex sends teams as "<org>:<team>", only for the installation's
+          # org: the glob matches the owner team without naming the org, like
+          # the namespace's RoleBinding.
+          - name: vault-oidc-role
+            base:
+              apiVersion: jwt.vault.m.upbound.io/v1alpha1
+              kind: AuthBackendRole
+              spec:
+                forProvider:
+                  backend: oidc
+                  roleName: placeholder
+                  roleType: oidc
+                  userClaim: preferred_username
+                  groupsClaim: groups
+                  oidcScopes: [profile, email, groups]
+                  boundClaimsType: glob
+                  boundClaims:
+                    groups: placeholder
+                  allowedRedirectUris:
+                    - https://openbao.127.0.0.1.nip.io/ui/vault/auth/oidc/oidc/callback
+                    - http://localhost:8250/oidc/callback
+                  tokenPolicies:
+                    - placeholder
+                  tokenTtl: 3600
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: vault-local
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-team"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.namespace
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.roleName
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "tenant-%s"
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.ownerGroup
+                toFieldPath: spec.forProvider.boundClaims.groups
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "*:%s"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.tokenPolicies[0]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "tenant-%s"
+
     - step: filter-optional
       functionRef:
         name: function-cel-filter
@@ -424,3 +547,10 @@ spec:
           - sequence:
               - vault-serviceaccount
               - vault-secretstore
+          # The team's OIDC role grants the team's policy: policy first.
+          - sequence:
+              - namespace
+              - vault-oidc-policy
+          - sequence:
+              - vault-oidc-policy
+              - vault-oidc-role

@@ -237,6 +237,12 @@ local-ca-secret: local-ca
 		--namespace cert-manager \
 		--cert=$(LOCAL_CA_DIR)/ca.crt --key=$(LOCAL_CA_DIR)/ca.key \
 		--dry-run=client -o yaml | kubectl apply -f -
+	@# The certificate alone (no key), for in-cluster clients of the
+	@# platform's HTTPS hostnames: OpenBao, to reach Dex.
+	kubectl create namespace $(OPENBAO_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create configmap idpk-local-ca --namespace $(OPENBAO_NAMESPACE) \
+		--from-file=ca.crt=$(LOCAL_CA_DIR)/ca.crt \
+		--dry-run=client -o yaml | kubectl apply -f -
 
 # Adds the local CA to the host's trust store (asks for sudo). Once per CA,
 # not per cluster. Firefox keeps its own store: import ca.crt there by hand.
@@ -338,11 +344,18 @@ dex-secret: require-config
 	@kubectl create namespace dex --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 	@argocd_secret=$$(kubectl get secret dex-secrets -n dex -o jsonpath='{.data.ARGOCD_CLIENT_SECRET}' 2>/dev/null | base64 -d); \
 	[ -n "$$argocd_secret" ] || argocd_secret=$$(openssl rand -hex 24); \
+	openbao_secret=$$(kubectl get secret dex-secrets -n dex -o jsonpath='{.data.OPENBAO_CLIENT_SECRET}' 2>/dev/null | base64 -d); \
+	[ -n "$$openbao_secret" ] || openbao_secret=$$(openssl rand -hex 24); \
 	kubectl create secret generic dex-secrets --namespace dex \
 		--from-literal=IDPK_GITHUB_ORG="$$IDPK_GITHUB_ORG" \
 		--from-literal=GITHUB_CLIENT_ID="$$DEX_GITHUB_CLIENT_ID" \
 		--from-literal=GITHUB_CLIENT_SECRET="$$DEX_GITHUB_CLIENT_SECRET" \
 		--from-literal=ARGOCD_CLIENT_SECRET="$$argocd_secret" \
+		--from-literal=OPENBAO_CLIENT_SECRET="$$openbao_secret" \
+		--dry-run=client -o yaml | kubectl apply -f - >/dev/null && \
+	kubectl create namespace $(OPENBAO_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f - >/dev/null && \
+	kubectl create secret generic openbao-oidc --namespace $(OPENBAO_NAMESPACE) \
+		--from-literal=client-secret="$$openbao_secret" \
 		--dry-run=client -o yaml | kubectl apply -f - >/dev/null && \
 	if kubectl get namespace $(ARGOCD_NAMESPACE) >/dev/null 2>&1; then \
 		kubectl create secret generic dex-argocd --namespace $(ARGOCD_NAMESPACE) \
@@ -362,6 +375,7 @@ dex-install: dex-secret
 		--values platform/dex/values.yaml \
 		--wait
 	kubectl apply -k platform/access/
+	kubectl apply -k platform/openbao-sso/
 
 # Adds an `idpk-sso` context to your kubeconfig: kubectl as yourself, signed
 # in with GitHub through Dex (kubelogin opens your browser). What you can do

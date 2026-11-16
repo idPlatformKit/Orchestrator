@@ -41,6 +41,7 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | 0 | `providers` | `providers/` kustomize base |
 | 0 | `dex`, `access` | Dex chart + `platform/dex/values.yaml`, and `platform/access/` (cluster roles for teams). See [sso.md](sso.md) |
 | 0 | `portal` | `platform/portal/` chart: the portal at `https://portal.127.0.0.1.nip.io`, with the installation's org and instances repository |
+| 1 | `openbao-sso` | `platform/openbao-sso/`: OpenBao's OIDC auth method and the `admin` role, with provider-vault (its CRDs come with the providers) |
 | 1 | `compositions` | `compositions/` kustomize base |
 | -1 | `external-secrets` | External Secrets Operator Helm chart + `platform/external-secrets/values.yaml` |
 | -1 | `backstage-reader` | `platform/backstage-reader/`: read-only ServiceAccount for the portal's Kubernetes plugin |
@@ -59,7 +60,7 @@ Six Secrets hold dev-default credentials or the installation's own and are creat
 | `openbao-creds` | `openbao-system` | provider-vault `ClusterProviderConfig` |
 | `idplatformkit-local-ca` | `cert-manager` | cert-manager's local CA `ClusterIssuer`. The key pair is generated once on the host (`.local-ca/`, git-ignored), see [gateway.md](gateway.md) |
 | `portal-secrets` | `backstage-system` | The portal: your OAuth App (from `.idpk.env`) and the GitHub token its catalog reads the org with (your `gh` token, or `GITHUB_TOKEN`) |
-| `dex-secrets` | `dex` | Dex: the org, its own OAuth App (from `.idpk.env`), and the Argo CD client secret, generated once. The same client secret is in `dex-argocd` (`argocd` namespace) for Argo CD |
+| `dex-secrets` | `dex` | Dex: the org, its own OAuth App (from `.idpk.env`), and the Argo CD and OpenBao client secrets, generated once. The same client secrets are in `dex-argocd` (`argocd`) and `openbao-oidc` (`openbao-system`) |
 
 This imperative step is a bootstrap stopgap: External Secrets Operator delivers *tenant* secrets, but the platform's own bootstrap credentials still have to exist before anything, ESO included, can run. The values are the same fixed local credentials as in the Makefile and are only meant for kind.
 
