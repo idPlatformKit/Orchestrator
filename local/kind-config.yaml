@@ -9,6 +9,11 @@ networking:
   serviceSubnet: 10.96.0.0/16
 nodes:
   - role: control-plane
+    # Pinned: the API server's structured authentication configuration
+    # (local/authentication-config.yaml) needs Kubernetes 1.34+, and the
+    # kubeadm patches below use the kubeadm v1beta4 format (extraArgs as a
+    # list). Image from the kind v0.32.0 release notes.
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
     # Host ports 80/443 -> the Envoy Gateway Service's fixed NodePorts (see
     # platform/gateway/envoyproxy.yaml), so https://<name>.127.0.0.1.nip.io
     # reaches the platform Gateway without port-forwards. Bound to 127.0.0.1

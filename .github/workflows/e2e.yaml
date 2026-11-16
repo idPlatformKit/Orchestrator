@@ -31,6 +31,8 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+          # The kind version the node image in local/kind-config.yaml is built for.
+          version: v0.32.0
 
       - uses: azure/setup-helm@v4
 
@@ -81,6 +83,8 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
+          # The kind version the node image in local/kind-config.yaml is built for.
+          version: v0.32.0
 
       - uses: azure/setup-helm@v4
 

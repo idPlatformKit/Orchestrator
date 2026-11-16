@@ -99,6 +99,18 @@ if [ "$missing" = 1 ]; then
 	exit 1
 fi
 
+# The cluster's node image (local/kind-config.yaml) and its kubeadm patches
+# need kind v0.32 or later: older versions write a kubeadm config the
+# patches don't fit.
+kind_version=$(kind version 2>/dev/null | sed -n 's/^kind v\([0-9]*\)\.\([0-9]*\).*/\1 \2/p')
+set -- $kind_version
+if [ "${1:-0}" -gt 0 ] || [ "${2:-0}" -ge 32 ]; then
+	ok "kind v${1:-?}.${2:-?} (v0.32 or later)"
+else
+	fail "kind v${1:-?}.${2:-?} is too old: v0.32 or later is needed. brew upgrade kind, or https://kind.sigs.k8s.io/"
+	exit 1
+fi
+
 if docker info >/dev/null 2>&1; then
 	ok "Docker is running"
 else
