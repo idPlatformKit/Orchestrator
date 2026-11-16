@@ -21,4 +21,4 @@ jwt:
       # installation's org. Keep the slug: RoleBindings (a Tenant's
       # ownerGroup, platform-admins) don't name the org.
       groups:
-        expression: "has(claims.groups) ? claims.groups.map(g, g.substring(g.indexOf(':') + 1)) : []"
+        expression: "has(claims.groups) ? dyn(claims.groups).map(g, g.substring(g.indexOf(':') + 1)) : []"
