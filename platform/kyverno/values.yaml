@@ -1,0 +1,41 @@
+# Kyverno, the policy engine behind the tenant guardrails (platform/policies/).
+# Installed by `make kyverno-install` (local flow) and by the `kyverno` Argo CD
+# Application (GitOps flow). Dev-mode: one replica of each controller. Not for
+# production as is: run the admission controller with 3 replicas there.
+
+admissionController:
+  replicas: 1
+  container:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 384Mi
+
+backgroundController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+reportsController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+cleanupController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi

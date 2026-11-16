@@ -60,6 +60,9 @@ jobs:
       - name: Tenant composition
         run: make try-tenant
 
+      - name: Tenant guardrails (Pod Security Admission, Kyverno)
+        run: make try-guardrails
+
       - name: PostgresDatabase composition
         run: make try-postgres-database
 
@@ -108,6 +111,9 @@ jobs:
 
       - name: Tenant composition
         run: make try-tenant
+
+      - name: Tenant guardrails (Pod Security Admission, Kyverno)
+        run: make try-guardrails
 
       - name: PostgresDatabase composition
         run: make try-postgres-database

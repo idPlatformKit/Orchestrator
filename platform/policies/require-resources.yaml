@@ -1,0 +1,43 @@
+# Every container of a workload in a tenant namespace declares the CPU and
+# memory it requests and the memory it may use at most: the scheduler and the
+# tenant's ResourceQuota count on them. CPU limits stay optional (they
+# throttle more than they protect).
+#
+# Autogen applies the same check to the pod template of Deployments,
+# StatefulSets, DaemonSets, Jobs and CronJobs, so a workload is refused at
+# `kubectl apply` or Argo CD sync, not later when its pods fail to start.
+# A bare Pod gets the LimitRange's defaults first (built-in admission runs
+# before webhooks), so it always passes.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: tenant-require-resources
+  annotations:
+    policies.kyverno.io/title: Require CPU and memory requests and a memory limit
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+    namespaceSelector:
+      matchExpressions:
+        - key: platform.idplatformkit.io/tenant
+          operator: Exists
+  autogen:
+    podControllers:
+      controllers: [deployments, statefulsets, daemonsets, jobs, cronjobs]
+  validations:
+    - expression: >-
+        object.spec.containers.all(c,
+          has(c.resources) &&
+          has(c.resources.requests) && 'cpu' in c.resources.requests && 'memory' in c.resources.requests &&
+          has(c.resources.limits) && 'memory' in c.resources.limits)
+      messageExpression: >-
+        'Every container needs resources.requests.cpu, resources.requests.memory and resources.limits.memory (missing in: ' +
+        object.spec.containers.filter(c, !(
+          has(c.resources) &&
+          has(c.resources.requests) && 'cpu' in c.resources.requests && 'memory' in c.resources.requests &&
+          has(c.resources.limits) && 'memory' in c.resources.limits)).map(c, c.name).join(', ') + ')'

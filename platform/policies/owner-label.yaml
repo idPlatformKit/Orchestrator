@@ -1,0 +1,36 @@
+# Every pod in a tenant namespace carries the team that owns the tenant:
+# platform.idplatformkit.io/owner, copied from the namespace (set by the
+# Tenant composition from spec.ownerGroup). The platform sets it rather than
+# asking teams to: it's always there, and always right, even if a manifest
+# says otherwise. Autogen does the same for the pod templates of workloads.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
+metadata:
+  name: tenant-owner-label
+  annotations:
+    policies.kyverno.io/title: Label pods with the tenant's owner team
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+    namespaceSelector:
+      matchExpressions:
+        - key: platform.idplatformkit.io/owner
+          operator: Exists
+  autogen:
+    podControllers:
+      controllers: [deployments, statefulsets, daemonsets, jobs, cronjobs]
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >-
+          Object{
+            metadata: Object.metadata{
+              labels: {
+                "platform.idplatformkit.io/owner": namespaceObject.metadata.labels["platform.idplatformkit.io/owner"]
+              }
+            }
+          }

@@ -1,0 +1,17 @@
+# Refused in a tenant namespace by tenant-require-resources: the container
+# declares no resources.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardrails-no-resources
+  namespace: demo-team
+spec:
+  selector:
+    matchLabels: {app: guardrails-no-resources}
+  template:
+    metadata:
+      labels: {app: guardrails-no-resources}
+    spec:
+      containers:
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.29

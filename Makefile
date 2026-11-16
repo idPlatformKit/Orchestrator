@@ -19,6 +19,7 @@ ESO_CHART_VERSION ?= 2.14.0
 CERT_MANAGER_CHART_VERSION ?= v1.21.3
 ENVOY_GATEWAY_CHART_VERSION ?= v1.9.3
 DEX_CHART_VERSION ?= 0.26.0
+KYVERNO_CHART_VERSION ?= 3.9.2
 
 # Local CA signing the platform's HTTPS certificates. Generated once, kept
 # outside the cluster so it survives `make local-down` (see local-ca below).
@@ -209,6 +210,28 @@ external-secrets-install:
 
 external-secrets-uninstall:
 	helm uninstall external-secrets --namespace external-secrets
+
+# --- Tenant guardrails (see docs/guardrails.md) ---
+kyverno-install:
+	helm repo add kyverno https://kyverno.github.io/kyverno/ --force-update
+	helm repo update kyverno
+	helm upgrade --install kyverno kyverno/kyverno \
+		--namespace kyverno \
+		--create-namespace \
+		--version $(KYVERNO_CHART_VERSION) \
+		--values platform/kyverno/values.yaml \
+		--wait
+
+# Waits until Kyverno has turned each policy into its admission webhooks.
+policies-apply:
+	kubectl apply -k platform/policies/
+	kubectl wait --for=jsonpath='{.status.conditionStatus.ready}'=true --timeout=120s \
+		validatingpolicy.policies.kyverno.io/tenant-require-resources \
+		mutatingpolicy.policies.kyverno.io/tenant-owner-label
+
+# Needs the demo-team tenant from try-tenant. Server-side dry runs only.
+try-guardrails:
+	./scripts/try-guardrails.sh
 
 # --- HTTPS entry point (see docs/gateway.md) ---
 
@@ -524,7 +547,7 @@ backstage-token:
 	@echo "export K8S_CLUSTER_TOKEN=$$(kubectl create token backstage-reader -n backstage-system --duration=8h)"
 	@echo "# Expires in 8 hours: run this again then."
 
-local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply external-secrets-install cert-manager-install envoy-gateway-install gateway-apply compositions-apply backstage-reader-apply
+local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply external-secrets-install kyverno-install cert-manager-install envoy-gateway-install gateway-apply compositions-apply policies-apply backstage-reader-apply
 	@echo "Local cluster '$(CLUSTER_NAME)' is ready: Crossplane, provider-sql, provider-vault, the shared Postgres server, and the shared OpenBao server are installed, compositions applied, HTTPS on https://<name>.$(PLATFORM_DOMAIN)."
 
 # --- GitOps flow (see docs/gitops.md) ---
