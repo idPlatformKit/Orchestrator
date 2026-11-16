@@ -401,6 +401,13 @@ spec:
     # resetCompositeReadiness has the final say: the Tenant can't report
     # Ready while some resources are still held back.
     #
+    # cacheTTL: the function's response is valid that long, and Crossplane
+    # reconciles the Tenant again after it. With the default (1 minute), a
+    # Tenant waited for that next pass at every held-back step and took
+    # about 60s to become Ready; 64s measured with the previous
+    # patch-and-transform composition too. With 5s: 13s. The cost is a
+    # reconcile of each Tenant every 5 seconds.
+    #
     # One rule per prerequisite, and per environment: a group of
     # alternatives in first position didn't hold resources back. A rule
     # naming an environment the tenant doesn't have holds nothing back,
@@ -412,6 +419,7 @@ spec:
         apiVersion: sequencer.fn.crossplane.io/v1beta1
         kind: Input
         resetCompositeReadiness: true
+        cacheTTL: 5s
         rules:
           - sequence:
               - namespace-staging

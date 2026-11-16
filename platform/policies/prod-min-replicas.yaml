@@ -1,6 +1,8 @@
 # In prod, Deployments and StatefulSets run at least 2 replicas, so that a
 # node drain or a rollout never takes the app down. Scaling through the
-# scale subresource (kubectl scale, an autoscaler) isn't checked.
+# scale subresource (kubectl scale, an autoscaler) isn't checked. An unset
+# spec.replicas is already 1 here: the API server defaults it before
+# admission webhooks run.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -19,7 +21,7 @@ spec:
       matchLabels:
         platform.idplatformkit.io/environment: prod
   validations:
-    - expression: has(object.spec.replicas) && object.spec.replicas >= 2
+    - expression: object.spec.replicas >= 2
       messageExpression: >-
         'In prod, ' + object.kind + 's run at least 2 replicas (spec.replicas: ' +
-        (has(object.spec.replicas) ? string(object.spec.replicas) : 'unset, so 1') + ')'
+        string(object.spec.replicas) + ')'

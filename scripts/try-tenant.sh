@@ -18,7 +18,9 @@ for env in staging prod; do
   pss=$(kubectl get namespace "$ns" -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}')
   role=$(kubectl get rolebinding "$tenant" -n "$ns" -o jsonpath='{.roleRef.name}')
   echo "Pod Security: $pss, owner team: $role"
-  kubectl get resourcequota,limitrange,networkpolicy,serviceaccount/demo-app,secretstore/openbao -n "$ns"
+  kubectl get resourcequota,limitrange,networkpolicy -n "$ns"
+  kubectl get serviceaccount demo-app -n "$ns"
+  kubectl get secretstore openbao -n "$ns"
 
   # A different value per environment, written with the dev root token into
   # the environment's mount of the tenant's OpenBao namespace.
@@ -40,8 +42,8 @@ staging_token=$(bao bao write -field=token auth/kubernetes/login role=staging jw
 if out=$(bao env BAO_TOKEN="$staging_token" bao kv get prod/db-credentials 2>&1); then
   fail "staging's identity read prod's secret"
 fi
-echo "$out" | grep -q "permission denied" || fail "unexpected error reading prod with staging's token: $out"
-echo "staging's token reading prod's secret: permission denied"
+echo "$out" | grep -q "Code: 403" || fail "unexpected error reading prod with staging's token: $out"
+echo "staging's token reading prod's secret: refused (403)"
 if out=$(bao bao write auth/kubernetes/login role=prod jwt="$jwt" 2>&1); then
   fail "staging's ServiceAccount logged in with prod's role"
 fi
