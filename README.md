@@ -82,14 +82,14 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ Single sign-on with Dex: GitHub teams of the installation's org as groups for Argo CD, kubectl and OpenBao (`platform-admins`, and each tenant's team on its own namespace and secrets) ([#28](https://github.com/idPlatformKit/Orchestrator/issues/28), [docs/sso.md](docs/sso.md))
 - ✅ Dedicated identities for agents (read-only, expiring), CI (GitHub Actions OIDC, no stored kubeconfig) and break-glass (one hour, audited); no long-lived tokens, no shared Argo CD admin ([#29](https://github.com/idPlatformKit/Orchestrator/issues/29), [docs/access.md](docs/access.md))
 - ✅ HTTPS entry point: Gateway API (Envoy Gateway), cert-manager with a local CA, `https://<name>.127.0.0.1.nip.io` for OpenBao and Argo CD, end-to-end tested in CI ([#27](https://github.com/idPlatformKit/Orchestrator/issues/27))
+- ✅ Tenant guardrails: Pod Security Admission (baseline) and Kyverno (resources required on workloads, every pod labelled with its owner team), end-to-end tested in CI ([#8](https://github.com/idPlatformKit/Orchestrator/issues/8), [docs/guardrails.md](docs/guardrails.md))
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
 ## Roadmap
 
-1. **Guardrails**: Kyverno baseline policies for tenant namespaces ([#8](https://github.com/idPlatformKit/Orchestrator/issues/8)).
-2. **"New app" golden path**: from a form to a running app in a tenant, wired to its database and secrets ([#24](https://github.com/idPlatformKit/Orchestrator/issues/24)).
-3. **Per-tenant observability**: a Grafana dashboard for each tenant ([#25](https://github.com/idPlatformKit/Orchestrator/issues/25)).
+1. **"New app" golden path**: from a form to a running app in a tenant, wired to its database and secrets ([#24](https://github.com/idPlatformKit/Orchestrator/issues/24)).
+2. **Per-tenant observability**: a Grafana dashboard for each tenant ([#25](https://github.com/idPlatformKit/Orchestrator/issues/25)).
 
 Beyond that, the longer-term roadmap runs from Milestone 4 to 13: HTTPS and certificates on kind (done), SSO with Dex, day-2 lifecycle and governance, the composition library as a product, developer experience, agentic development, tenancy tiers and multi-cluster, prod-like services, a cloud target, and AI platform services. Each milestone is a [`roadmap` issue](https://github.com/idPlatformKit/Orchestrator/issues?q=is%3Aissue%20label%3Aroadmap%20is%3Aopen), prefixed `[M4]` to `[M13]`.
 

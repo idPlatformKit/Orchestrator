@@ -20,10 +20,24 @@ spec:
             base:
               apiVersion: v1
               kind: Namespace
+              metadata:
+                labels:
+                  # Pod Security Admission (built into Kubernetes): refuse
+                  # pods below the "baseline" Pod Security Standard
+                  # (privileged, host namespaces, hostPath...).
+                  pod-security.kubernetes.io/enforce: baseline
             patches:
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
+              # What the guardrails (platform/policies/) select tenant
+              # namespaces on, and the team every workload is labelled with.
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.labels[platform.idplatformkit.io/tenant]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.ownerGroup
+                toFieldPath: metadata.labels[platform.idplatformkit.io/owner]
             # Plain native resources have no Ready status condition to wait
             # on -- consider them ready as soon as they're created.
             readinessChecks:

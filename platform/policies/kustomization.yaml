@@ -1,0 +1,8 @@
+# The guardrails of tenant namespaces, enforced at admission by Kyverno
+# (platform/kyverno/). Applied by `make policies-apply` and by the `policies`
+# Argo CD Application. See docs/guardrails.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - require-resources.yaml
+  - owner-label.yaml

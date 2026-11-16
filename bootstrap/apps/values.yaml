@@ -15,6 +15,7 @@ charts:
   certManager: v1.21.3
   envoyGateway: v1.9.3
   dex: 0.26.0
+  kyverno: 3.9.2
 
 # The installation: the GitHub org whose members use the portal and whose
 # teams own tenants, and its instances repository. Set by the root

@@ -1,0 +1,13 @@
+# Refused in a tenant namespace by Pod Security Admission (baseline).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: guardrails-privileged
+  namespace: demo-team
+spec:
+  containers:
+    - name: shell
+      image: busybox:1.37
+      command: [sleep, "3600"]
+      securityContext:
+        privileged: true

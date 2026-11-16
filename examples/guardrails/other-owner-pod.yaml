@@ -1,0 +1,13 @@
+# A pod claiming another owner: tenant-owner-label overwrites it with the
+# tenant's team. No resources: the LimitRange's defaults fill them in.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: guardrails-other-owner
+  namespace: demo-team
+  labels:
+    platform.idplatformkit.io/owner: someone-else
+spec:
+  containers:
+    - name: web
+      image: nginxinc/nginx-unprivileged:1.29
