@@ -53,8 +53,8 @@ IdPlatformKit status
 
 Open
   Portal    https://portal.127.0.0.1.nip.io   sign in with GitHub (a member of idpk-test)
-  Argo CD   https://argocd.127.0.0.1.nip.io   admin / <generated password>
-  OpenBao   https://openbao.127.0.0.1.nip.io/ui   token root-local-dev
+  Argo CD   https://argocd.127.0.0.1.nip.io   Log in via GitHub
+  OpenBao   https://openbao.127.0.0.1.nip.io/ui   OIDC: role admin, or tenant-<name> (or token root-local-dev)
 ```
 
 If the local CA isn't trusted yet, `make status` says so: run `make local-ca-trust` once per machine (sudo), so the browser accepts the platform's certificate.

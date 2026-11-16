@@ -32,8 +32,8 @@ nodes:
       - hostPath: __ORCHESTRATOR_DIR__/local/kubeadm-patches
         containerPath: /kind/kubeadm-patches
         readOnly: true
-      # The API server's authentication configuration, rendered by
-      # `make kind-up` from local/authentication-config.yaml.
+      # The API server's authentication configuration and audit policy,
+      # rendered by `make kind-up` from local/.
       - hostPath: __ORCHESTRATOR_DIR__/.idpk/apiserver
         containerPath: /etc/kubernetes/idpk
         readOnly: true
@@ -48,9 +48,21 @@ nodes:
           extraArgs:
             - name: authentication-config
               value: /etc/kubernetes/idpk/authentication-config.yaml
+            # Break-glass requests only (local/audit-policy.yaml).
+            - name: audit-policy-file
+              value: /etc/kubernetes/idpk/audit-policy.yaml
+            - name: audit-log-path
+              value: /var/log/kubernetes/audit/audit.log
+            - name: audit-log-maxage
+              value: "7"
           extraVolumes:
             - name: idpk-auth
               hostPath: /etc/kubernetes/idpk
               mountPath: /etc/kubernetes/idpk
               readOnly: true
               pathType: Directory
+            - name: audit-log
+              hostPath: /var/log/kubernetes/audit
+              mountPath: /var/log/kubernetes/audit
+              readOnly: false
+              pathType: DirectoryOrCreate

@@ -1,6 +1,10 @@
-# Cluster-wide access for people, through Dex (platform/dex/). Tenants' own
-# access is in each Tenant (a RoleBinding to its ownerGroup).
+# Cluster-wide access: people through Dex (platform/dex/), agents, CI and
+# break-glass (see docs/access.md). Tenants' own access is in each Tenant (a
+# RoleBinding to its ownerGroup).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - platform-admins.yaml
+  - agents.yaml
+  - ci.yaml
+  - break-glass.yaml

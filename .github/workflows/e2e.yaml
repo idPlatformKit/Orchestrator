@@ -11,6 +11,12 @@ on:
 # CI installs the project's own demo installation: the idPlatformKit org and
 # its instances repository. The portal's sign-in isn't exercised (no OAuth
 # App here, nor Dex's GitHub sign-in); its GitHub token is the workflow's.
+# id-token: the jobs sign in to their kind cluster as a CI identity, with
+# their GitHub OIDC token (make try-ci-identity).
+permissions:
+  contents: read
+  id-token: write
+
 env:
   IDPK_GITHUB_ORG: idPlatformKit
   IDPK_INSTANCES_REPO: instances
@@ -47,6 +53,9 @@ jobs:
 
       - name: HTTPS entry point (Gateway, local CA, portal)
         run: make try-gateway
+
+      - name: CI identity (GitHub Actions OIDC, read-only)
+        run: make try-ci-identity
 
       - name: Tenant composition
         run: make try-tenant
@@ -93,6 +102,9 @@ jobs:
 
       - name: HTTPS entry point (Gateway, local CA, Argo CD, portal)
         run: make try-gateway
+
+      - name: CI identity (GitHub Actions OIDC, read-only)
+        run: make try-ci-identity
 
       - name: Tenant composition
         run: make try-tenant

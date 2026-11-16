@@ -1,0 +1,24 @@
+# AI agents and other automation that should see the platform, never change
+# it directly: every ServiceAccount in idpk-agents gets the same read-only
+# view the portal has (the backstage-reader ClusterRole: tenants, databases,
+# what they compose, no Secrets). An agent changes things the GitOps way, by
+# opening pull requests on the instances repository with its own GitHub
+# identity. `make agent-kubeconfig NAME=<agent>` creates its ServiceAccount
+# and a kubeconfig whose token expires.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: idpk-agents
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: idpk-agents-read-only
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backstage-reader
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:serviceaccounts:idpk-agents

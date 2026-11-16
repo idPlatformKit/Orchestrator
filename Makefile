@@ -40,7 +40,7 @@ GITOPS_REPO_URL ?= https://github.com/idPlatformKit/Orchestrator.git
 GITOPS_REVISION ?= main
 
 .PHONY: setup up down status require-config portal-secret portal-install \
-	dex-secret dex-install kubeconfig-sso \
+	dex-secret dex-install kubeconfig-sso agent-kubeconfig break-glass break-glass-log \
 	kind-up kind-down crossplane-install crossplane-uninstall \
 	providers-apply openbao-providerconfig-apply \
 	postgres-server-install postgres-server-uninstall \
@@ -52,7 +52,7 @@ GITOPS_REVISION ?= main
 	backstage-reader-apply backstage-token \
 	external-secrets-install external-secrets-uninstall \
 	local-ca local-ca-secret local-ca-trust local-ca-untrust \
-	cert-manager-install envoy-gateway-install gateway-apply try-gateway
+	cert-manager-install envoy-gateway-install gateway-apply try-gateway try-ci-identity
 
 # --- Guided install (see docs/install.md) ---
 
@@ -84,6 +84,7 @@ require-config:
 # platform's HTTPS hostnames the way the browser does.
 kind-up: local-ca
 	scripts/render.sh local/authentication-config.yaml .idpk/apiserver/authentication-config.yaml
+	cp local/audit-policy.yaml .idpk/apiserver/audit-policy.yaml
 	sed 's|__ORCHESTRATOR_DIR__|$(CURDIR)|' local/kind-config.yaml | \
 		kind create cluster --name $(CLUSTER_NAME) --config -
 	kubectl apply -f local/coredns.yaml
@@ -377,6 +378,81 @@ dex-install: dex-secret
 	kubectl apply -k platform/access/
 	kubectl apply -k platform/openbao-sso/
 
+# --- Non-human identities (see docs/access.md) ---
+
+AGENT_TOKEN_DURATION ?= 8h
+
+# A kubeconfig for one agent: its own ServiceAccount in idpk-agents, read-only
+# (platform/access/agents.yaml), with a token that expires. Written to
+# .idpk/agents/<name>.kubeconfig (git-ignored, readable by you only).
+agent-kubeconfig:
+	@[ -n "$(NAME)" ] || { echo "Usage: make agent-kubeconfig NAME=<agent> [AGENT_TOKEN_DURATION=8h]"; exit 1; }
+	@kubectl create serviceaccount $(NAME) --namespace idpk-agents --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@mkdir -p .idpk/agents
+	@cluster=kind-$(CLUSTER_NAME); \
+	server=$$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name==\"$$cluster\")].cluster.server}"); \
+	ca=$$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name==\"$$cluster\")].cluster.certificate-authority-data}"); \
+	token=$$(kubectl create token $(NAME) --namespace idpk-agents --duration=$(AGENT_TOKEN_DURATION)) || exit 1; \
+	f=.idpk/agents/$(NAME).kubeconfig; umask 077; \
+	printf 'apiVersion: v1\nkind: Config\nclusters:\n- name: %s\n  cluster:\n    server: %s\n    certificate-authority-data: %s\nusers:\n- name: agent-%s\n  user:\n    token: %s\ncontexts:\n- name: agent-%s\n  context:\n    cluster: %s\n    user: agent-%s\ncurrent-context: agent-%s\n' \
+		"$$cluster" "$$server" "$$ca" "$(NAME)" "$$token" "$(NAME)" "$$cluster" "$(NAME)" "$(NAME)" > $$f; \
+	echo "Wrote $$f: read-only, expires in $(AGENT_TOKEN_DURATION)."; \
+	echo "Try: KUBECONFIG=$$f kubectl get tenants"
+
+BREAK_GLASS_SECONDS ?= 3600
+
+# Emergency cluster-admin, for when single sign-on is down: a client
+# certificate for break-glass:<WHO>, in the idpk:break-glass group
+# (platform/access/break-glass.yaml), signed by the cluster's CA through a
+# CertificateSigningRequest and valid one hour. Issued with the cluster
+# owner's own admin credentials; every request it makes is audited
+# (`make break-glass-log`). Written to .idpk/break-glass/ (git-ignored).
+break-glass:
+	@[ -n "$(WHO)" ] || { echo "Usage: make break-glass WHO=<your name>"; exit 1; }
+	@d=.idpk/break-glass; mkdir -p $$d; umask 077; \
+	csr=break-glass-$(WHO)-$$(date +%s); \
+	openssl req -new -newkey rsa:2048 -nodes -keyout $$d/$(WHO).key \
+		-subj "/O=idpk:break-glass/CN=break-glass:$(WHO)" -out $$d/$(WHO).csr 2>/dev/null || exit 1; \
+	printf 'apiVersion: certificates.k8s.io/v1\nkind: CertificateSigningRequest\nmetadata:\n  name: %s\nspec:\n  request: %s\n  signerName: kubernetes.io/kube-apiserver-client\n  expirationSeconds: %s\n  usages: [client auth]\n' \
+		"$$csr" "$$(base64 < $$d/$(WHO).csr | tr -d '\n')" "$(BREAK_GLASS_SECONDS)" | kubectl apply -f - >/dev/null || exit 1; \
+	kubectl certificate approve $$csr >/dev/null; \
+	for i in 1 2 3 4 5 6 7 8 9 10; do \
+		crt=$$(kubectl get csr $$csr -o jsonpath='{.status.certificate}'); [ -n "$$crt" ] && break; sleep 1; \
+	done; \
+	[ -n "$$crt" ] || { echo "The certificate wasn't issued: kubectl describe csr $$csr"; exit 1; }; \
+	kubectl delete csr $$csr >/dev/null; \
+	cluster=kind-$(CLUSTER_NAME); \
+	server=$$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name==\"$$cluster\")].cluster.server}"); \
+	ca=$$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name==\"$$cluster\")].cluster.certificate-authority-data}"); \
+	key=$$(base64 < $$d/$(WHO).key | tr -d '\n'); \
+	f=$$d/$(WHO).kubeconfig; \
+	printf 'apiVersion: v1\nkind: Config\nclusters:\n- name: %s\n  cluster:\n    server: %s\n    certificate-authority-data: %s\nusers:\n- name: break-glass-%s\n  user:\n    client-certificate-data: %s\n    client-key-data: %s\ncontexts:\n- name: break-glass-%s\n  context:\n    cluster: %s\n    user: break-glass-%s\ncurrent-context: break-glass-%s\n' \
+		"$$cluster" "$$server" "$$ca" "$(WHO)" "$$crt" "$$key" "$(WHO)" "$$cluster" "$(WHO)" "$(WHO)" > $$f; \
+	rm -f $$d/$(WHO).key $$d/$(WHO).csr; \
+	echo "Wrote $$f: cluster-admin as break-glass:$(WHO), until $$(echo $$crt | base64 -d | openssl x509 -noout -enddate | cut -d= -f2)."; \
+	echo "Every request is audited: make break-glass-log"
+
+# What break-glass credentials did, from the API server's audit log.
+break-glass-log:
+	@docker exec $(CLUSTER_NAME)-control-plane cat /var/log/kubernetes/audit/audit.log 2>/dev/null | \
+		jq -r 'select(.stage == "ResponseComplete") | "\(.requestReceivedTimestamp)  \(.user.username)  \(.verb) \(.objectRef.resource // .requestURI)\(if .objectRef.namespace then " -n " + .objectRef.namespace else "" end)\(if .objectRef.name then " " + .objectRef.name else "" end)  \(.responseStatus.code)"' | \
+		tail -n 50
+
+# CI identity check, only inside a GitHub Actions job with `id-token: write`:
+# the job's OIDC token, and nothing else, signs in to the cluster.
+try-ci-identity:
+	@[ -n "$$ACTIONS_ID_TOKEN_REQUEST_URL" ] || { echo "Runs in a GitHub Actions job with 'id-token: write' only."; exit 1; }
+	@token=$$(curl -fsS -H "Authorization: bearer $$ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$$ACTIONS_ID_TOKEN_REQUEST_URL&audience=idplatformkit" | jq -r .value) || exit 1; \
+	cluster=kind-$(CLUSTER_NAME); \
+	server=$$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name==\"$$cluster\")].cluster.server}"); \
+	kubectl config view --raw -o jsonpath="{.clusters[?(@.name==\"$$cluster\")].cluster.certificate-authority-data}" | base64 -d > /tmp/idpk-ci-ca.crt; \
+	k="kubectl --kubeconfig=/dev/null --server=$$server --certificate-authority=/tmp/idpk-ci-ca.crt --token=$$token"; \
+	$$k auth whoami; \
+	for check in "yes get tenants.platform.idplatformkit.io" "no get secrets -n kube-system" "no create namespaces"; do \
+		want=$${check%% *}; got=$$($$k auth can-i $${check#* } 2>/dev/null); \
+		echo "can-i $${check#* }: $$got"; [ "$$got" = "$$want" ] || { echo "expected $$want"; exit 1; }; \
+	done
+
 # Adds an `idpk-sso` context to your kubeconfig: kubectl as yourself, signed
 # in with GitHub through Dex (kubelogin opens your browser). What you can do
 # depends on your teams: edit on your tenants' namespaces, everything for
@@ -445,7 +521,8 @@ backstage-reader-apply:
 #   eval "$$(make -s backstage-token)"
 backstage-token:
 	@echo "export K8S_CLUSTER_URL=$$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
-	@echo "export K8S_CLUSTER_TOKEN=$$(kubectl get secret backstage-reader-token -n backstage-system -o jsonpath='{.data.token}' | base64 -d)"
+	@echo "export K8S_CLUSTER_TOKEN=$$(kubectl create token backstage-reader -n backstage-system --duration=8h)"
+	@echo "# Expires in 8 hours: run this again then."
 
 local-up: kind-up crossplane-install providers-apply postgres-server-install openbao-server-install openbao-providerconfig-apply external-secrets-install cert-manager-install envoy-gateway-install gateway-apply compositions-apply backstage-reader-apply
 	@echo "Local cluster '$(CLUSTER_NAME)' is ready: Crossplane, provider-sql, provider-vault, the shared Postgres server, and the shared OpenBao server are installed, compositions applied, HTTPS on https://<name>.$(PLATFORM_DOMAIN)."

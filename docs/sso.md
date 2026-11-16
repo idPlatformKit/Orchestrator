@@ -25,7 +25,7 @@ make kubeconfig-sso                       # adds the idpk-sso context
 kubectl --context idpk-sso auth whoami    # opens the browser the first time
 ```
 
-Your usual `kind-idplatformkit-local` context stays the cluster's admin certificate, for the platform's own operations. OpenBao's dev root token, `root-local-dev`, still works too: both are break-glass paths for now (#29).
+Your usual `kind-idplatformkit-local` context stays the cluster owner's admin certificate. Emergency access for others is a time-limited, audited break-glass credential: see [access.md](access.md).
 
 ## How it fits together
 
@@ -95,5 +95,4 @@ Claims are untyped. `dyn(claims.groups).map(...)` compiles. To see such errors, 
 
 - Grafana doesn't use Dex yet: it comes with per-tenant observability (#25).
 - Dex stores sessions in memory: after a restart, sign in again.
-- The kind cluster's admin certificate (`kind-idplatformkit-local`) still works: it's the break-glass path for now. Dedicated non-human and emergency identities are [#29](https://github.com/idPlatformKit/Orchestrator/issues/29).
-- Argo CD's local `admin` account is still enabled, with its generated password.
+- Non-human identities (agents, CI) and break-glass access: see [access.md](access.md). Argo CD's local `admin` account is disabled.

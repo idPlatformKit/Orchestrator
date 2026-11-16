@@ -22,3 +22,19 @@ jwt:
       # ownerGroup, platform-admins) don't name the org.
       groups:
         expression: "has(claims.groups) ? dyn(claims.groups).map(g, g.substring(g.indexOf(':') + 1)) : []"
+  # CI: GitHub Actions workflows of the installation's org, with the
+  # short-lived OIDC token GitHub gives each job (audience "idplatformkit").
+  # No kubeconfig or token stored in CI secrets. Read-only, through the
+  # github-actions group (platform/access/ci.yaml). The e2e workflow checks it.
+  - issuer:
+      url: https://token.actions.githubusercontent.com
+      audiences:
+        - idplatformkit
+    claimValidationRules:
+      - expression: "claims.repository_owner == '__IDPK_GITHUB_ORG__'"
+        message: only workflows of the installation's GitHub org
+    claimMappings:
+      username:
+        expression: "'github-actions:' + claims.repository"
+      groups:
+        expression: "['github-actions']"

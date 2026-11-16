@@ -103,6 +103,10 @@ Every platform UI is served over HTTPS on `https://<name>.127.0.0.1.nip.io`, thr
 
 Dex is the platform's OIDC issuer at `https://dex.127.0.0.1.nip.io`, with a GitHub connector on the installation's org: its teams are groups. Argo CD and the API server (kubectl, through kubelogin) trust it; RoleBindings name team slugs, so they don't depend on the org. Inside the cluster, the platform's hostnames resolve to the Gateway. Details: [sso.md](sso.md).
 
+### Access (`platform/access/`)
+
+Who can do what, as a matrix: [access.md](access.md). People through Dex; the portal, agents and CI with read-only, expiring identities; break-glass for emergencies, one hour and audited.
+
 ### Portal (`platform/portal/`)
 
 The developer portal ([idPlatformKit/portal](https://github.com/idPlatformKit/portal), Backstage) runs in the cluster from its published image, `ghcr.io/idplatformkit/portal`, at `https://portal.127.0.0.1.nip.io`. A small Helm chart, used by both install flows, passes it the installation's GitHub org and instances repository; its OAuth App and GitHub token come from the `portal-secrets` bootstrap Secret. It reads the cluster with its pod's ServiceAccount, the read-only `backstage-reader`. Installing on your own org: [install.md](install.md).
