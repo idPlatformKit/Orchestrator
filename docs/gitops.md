@@ -13,11 +13,7 @@ make try-tenant && make try-postgres-database        # same checks as the local 
 
 The branch must be pushed: Argo CD runs inside the cluster and reads Git, not your working tree.
 
-The Argo CD UI is at **https://argocd.127.0.0.1.nip.io**, behind the platform Gateway (see [gateway.md](gateway.md); run `make local-ca-trust` once so the browser trusts the certificate). Sign in with **Log in via GitHub** ([sso.md](sso.md)), or as the local `admin`, password:
-
-```sh
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
-```
+The Argo CD UI is at **https://argocd.127.0.0.1.nip.io**, behind the platform Gateway (see [gateway.md](gateway.md); run `make local-ca-trust` once so the browser trusts the certificate). Sign in with **Log in via GitHub** ([sso.md](sso.md)): members of `platform-admins` are admins, everyone else in the org reads. The local `admin` account is disabled; in an emergency, use kubectl with a break-glass credential ([access.md](access.md)).
 
 ## Layout
 
@@ -115,7 +111,7 @@ What was observed on a fresh kind cluster with the `checkout` example claims (a 
 
 ## Portal access (`backstage-reader`)
 
-The portal's Kubernetes plugin reads the cluster through the `backstage-reader` ServiceAccount (`platform/backstage-reader/`). It has `get`/`list`/`watch` on the object types the plugin shows, the platform's XRs, and the Vault and Postgres managed resources, and **no access to Secrets** (checked: a request on `/api/v1/namespaces/payments/secrets` returns 403). `make backstage-token` prints the API server URL and the ServiceAccount token as environment variables for the portal's config. The long-lived token Secret is a local convenience, not how a real deployment should authenticate.
+The portal's Kubernetes plugin reads the cluster through the `backstage-reader` ServiceAccount (`platform/backstage-reader/`). It has `get`/`list`/`watch` on the object types the plugin shows, the platform's XRs, and the Vault and Postgres managed resources, and **no access to Secrets** (checked: a request on `/api/v1/namespaces/payments/secrets` returns 403). In the cluster, the portal runs as that ServiceAccount, with its pod's token, rotated by Kubernetes. For a portal running on the host, `make backstage-token` requests a token that expires after 8 hours: the long-lived token Secret it used to read is gone. See [access.md](access.md).
 
 The `instances` Application excludes `catalog/`, which holds the Backstage entities describing each tenant. They're read by the portal, not applied to the cluster.
 
