@@ -1,0 +1,62 @@
+# Dex chart values: the platform's OIDC issuer, at https://dex.127.0.0.1.nip.io.
+# Users sign in with GitHub; their teams in the installation's org become
+# OIDC groups ("<org>:<team-slug>"), which kubectl, Argo CD and OpenBao use.
+#
+# The same for every installation: Dex expands environment variables in its
+# config, and they come from the dex-secrets bootstrap Secret
+# (`make dex-secret`, from .idpk.env): IDPK_GITHUB_ORG, Dex's own GitHub OAuth
+# App (GITHUB_CLIENT_ID/_SECRET), and the generated client secrets.
+# Not for production use: in-memory storage (sign-ins don't survive a
+# restart), single replica.
+
+image:
+  tag: v2.46.1
+
+envFrom:
+  - secretRef:
+      name: dex-secrets
+
+config:
+  issuer: https://dex.127.0.0.1.nip.io
+  storage:
+    type: memory
+  oauth2:
+    skipApprovalScreen: true
+  connectors:
+    - type: github
+      id: github
+      name: GitHub
+      config:
+        clientID: $GITHUB_CLIENT_ID
+        clientSecret: $GITHUB_CLIENT_SECRET
+        redirectURI: https://dex.127.0.0.1.nip.io/callback
+        # Only the installation's org: its teams, by slug, as groups.
+        orgs:
+          - name: $IDPK_GITHUB_ORG
+        teamNameField: slug
+        # The GitHub login, rather than an opaque ID, as the subject.
+        useLoginAsID: true
+  staticClients:
+    # kubectl, through kubelogin (`make kubeconfig-sso`): a public client,
+    # the token is obtained on the user's machine.
+    - id: kubernetes
+      name: kubectl
+      public: true
+      redirectURIs:
+        - http://localhost:8000
+        - http://localhost:18000
+    - id: argocd
+      name: Argo CD
+      secretEnv: ARGOCD_CLIENT_SECRET
+      redirectURIs:
+        - https://argocd.127.0.0.1.nip.io/auth/callback
+
+# TLS ends at the platform Gateway.
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: platform
+      namespace: platform-gateway
+      sectionName: https
+  hostnames:
+    - dex.127.0.0.1.nip.io

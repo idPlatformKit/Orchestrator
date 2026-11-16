@@ -22,13 +22,30 @@ nodes:
         hostPort: 443
         listenAddress: 127.0.0.1
         protocol: TCP
-    # kubeadm patches for the control plane's static Pods.
     extraMounts:
+      # kubeadm patches for the control plane's static Pods.
       - hostPath: __ORCHESTRATOR_DIR__/local/kubeadm-patches
         containerPath: /kind/kubeadm-patches
+        readOnly: true
+      # The API server's authentication configuration, rendered by
+      # `make kind-up` from local/authentication-config.yaml.
+      - hostPath: __ORCHESTRATOR_DIR__/.idpk/apiserver
+        containerPath: /etc/kubernetes/idpk
         readOnly: true
     kubeadmConfigPatches:
       - |
         kind: InitConfiguration
         patches:
           directory: /kind/kubeadm-patches
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            - name: authentication-config
+              value: /etc/kubernetes/idpk/authentication-config.yaml
+          extraVolumes:
+            - name: idpk-auth
+              hostPath: /etc/kubernetes/idpk
+              mountPath: /etc/kubernetes/idpk
+              readOnly: true
+              pathType: Directory

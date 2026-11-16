@@ -1,0 +1,24 @@
+# The API server's authentication configuration (structured authentication,
+# GA since Kubernetes 1.34): it trusts Dex's ID tokens, for kubectl through
+# kubelogin (`make kubeconfig-sso`). Rendered by `make kind-up` into
+# .idpk/apiserver/ with the local CA inlined, then mounted into the node
+# (local/kind-config.yaml). The API server reaches Dex through the platform
+# Gateway (hostAliases, local/kubeadm-patches/).
+apiVersion: apiserver.config.k8s.io/v1
+kind: AuthenticationConfiguration
+jwt:
+  - issuer:
+      url: https://dex.127.0.0.1.nip.io
+      audiences:
+        - kubernetes
+      certificateAuthority: |
+        __LOCAL_CA__
+    claimMappings:
+      # The GitHub login, prefixed so it can't collide with other users.
+      username:
+        expression: "'github:' + claims.preferred_username"
+      # Dex sends GitHub teams as "<org>:<team-slug>", and only for the
+      # installation's org. Keep the slug: RoleBindings (a Tenant's
+      # ownerGroup, platform-admins) don't name the org.
+      groups:
+        expression: "has(claims.groups) ? claims.groups.map(g, g.substring(g.indexOf(':') + 1)) : []"

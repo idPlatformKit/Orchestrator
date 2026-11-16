@@ -10,12 +10,14 @@ on:
 
 # CI installs the project's own demo installation: the idPlatformKit org and
 # its instances repository. The portal's sign-in isn't exercised (no OAuth
-# App here); its GitHub token is the workflow's.
+# App here, nor Dex's GitHub sign-in); its GitHub token is the workflow's.
 env:
   IDPK_GITHUB_ORG: idPlatformKit
   IDPK_INSTANCES_REPO: instances
   AUTH_GITHUB_CLIENT_ID: ci-not-used
   AUTH_GITHUB_CLIENT_SECRET: ci-not-used
+  DEX_GITHUB_CLIENT_ID: ci-not-used
+  DEX_GITHUB_CLIENT_SECRET: ci-not-used
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
@@ -37,6 +39,9 @@ jobs:
 
       - name: Portal
         run: make portal-install
+
+      - name: Single sign-on (Dex)
+        run: make dex-install
 
       - name: HTTPS entry point (Gateway, local CA, portal)
         run: make try-gateway

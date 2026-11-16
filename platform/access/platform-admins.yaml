@@ -1,0 +1,16 @@
+# Members of the installation org's `platform-admins` team are cluster
+# admins with kubectl. The API server maps Dex's "<org>:<team>" groups to the
+# bare team slug (local/authentication-config.yaml), so this binding, like a
+# Tenant's ownerGroup, doesn't name the org.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-admins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: platform-admins
