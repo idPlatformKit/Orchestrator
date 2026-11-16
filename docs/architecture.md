@@ -107,6 +107,10 @@ Dex is the platform's OIDC issuer at `https://dex.127.0.0.1.nip.io`, with a GitH
 
 Who can do what, as a matrix: [access.md](access.md). People through Dex; the portal, agents and CI with read-only, expiring identities; break-glass for emergencies, one hour and audited.
 
+### Guardrails (`platform/kyverno/`, `platform/policies/`)
+
+Tenant namespaces enforce the baseline Pod Security Standard (Pod Security Admission, a label set by the Tenant composition). Kyverno requires CPU and memory requests and a memory limit on workloads, and labels every pod with its owner team. Policies select tenant namespaces by label and leave platform namespaces alone. See [guardrails.md](guardrails.md).
+
 ### Portal (`platform/portal/`)
 
 The developer portal ([idPlatformKit/portal](https://github.com/idPlatformKit/portal), Backstage) runs in the cluster from its published image, `ghcr.io/idplatformkit/portal`, at `https://portal.127.0.0.1.nip.io`. A small Helm chart, used by both install flows, passes it the installation's GitHub org and instances repository; its OAuth App and GitHub token come from the `portal-secrets` bootstrap Secret. It reads the cluster with its pod's ServiceAccount, the read-only `backstage-reader`. Installing on your own org: [install.md](install.md).
