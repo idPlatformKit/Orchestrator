@@ -1,6 +1,12 @@
+# The kind cluster. `make kind-up` replaces __ORCHESTRATOR_DIR__ with this
+# repository's absolute path, for the extraMounts.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: idplatformkit-local
+networking:
+  # Explicit because the platform Gateway's fixed ClusterIP, 10.96.0.80, must
+  # be in it (platform/gateway/envoyproxy.yaml).
+  serviceSubnet: 10.96.0.0/16
 nodes:
   - role: control-plane
     # Host ports 80/443 -> the Envoy Gateway Service's fixed NodePorts (see
@@ -16,3 +22,13 @@ nodes:
         hostPort: 443
         listenAddress: 127.0.0.1
         protocol: TCP
+    # kubeadm patches for the control plane's static Pods.
+    extraMounts:
+      - hostPath: __ORCHESTRATOR_DIR__/local/kubeadm-patches
+        containerPath: /kind/kubeadm-patches
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        patches:
+          directory: /kind/kubeadm-patches

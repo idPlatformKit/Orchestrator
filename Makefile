@@ -76,8 +76,15 @@ require-config:
 		exit 1; \
 	fi
 
+# The cluster, then CoreDNS answering every *.127.0.0.1.nip.io name with the
+# platform Gateway's ClusterIP (local/coredns.yaml), so pods reach the
+# platform's HTTPS hostnames the way the browser does.
 kind-up:
-	kind create cluster --name $(CLUSTER_NAME) --config local/kind-config.yaml
+	sed 's|__ORCHESTRATOR_DIR__|$(CURDIR)|' local/kind-config.yaml | \
+		kind create cluster --name $(CLUSTER_NAME) --config -
+	kubectl apply -f local/coredns.yaml
+	kubectl rollout restart deployment/coredns -n kube-system
+	kubectl rollout status deployment/coredns -n kube-system --timeout=120s
 
 kind-down:
 	kind delete cluster --name $(CLUSTER_NAME)

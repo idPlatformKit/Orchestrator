@@ -2,6 +2,14 @@
 # kind has no load balancer, so a NodePort Service with fixed ports, mapped to
 # the host's 80/443 by local/kind-config.yaml (extraPortMappings). The patch
 # merges on the Service ports by their `port` (the Gateway listener ports).
+#
+# The ClusterIP is fixed too: inside the cluster, every *.127.0.0.1.nip.io
+# name resolves to it (CoreDNS for pods, local/coredns.yaml; hostAliases for
+# the API server, local/kubeadm-patches/), so in-cluster callers reach the
+# platform's HTTPS hostnames through the same Gateway and certificate as the
+# browser. 10.96.0.80 is in the static band of the Service subnet set in
+# local/kind-config.yaml. A ClusterIP can't change: on an existing cluster,
+# delete the Service and let Envoy Gateway re-create it.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
@@ -17,6 +25,7 @@ spec:
           type: StrategicMerge
           value:
             spec:
+              clusterIP: 10.96.0.80
               ports:
                 - port: 80
                   nodePort: 30080

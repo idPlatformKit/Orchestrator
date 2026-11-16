@@ -1,0 +1,45 @@
+# CoreDNS configuration for the kind cluster: kind's default Corefile, plus a
+# template that answers every *.127.0.0.1.nip.io name with the platform
+# Gateway's fixed ClusterIP (platform/gateway/envoyproxy.yaml). Without it,
+# nip.io resolves these names to 127.0.0.1, the calling pod itself. Applied by
+# `make kind-up`, right after the cluster is created.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns
+  namespace: kube-system
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        template IN A 127.0.0.1.nip.io {
+           match "^(.+\.)?127\.0\.0\.1\.nip\.io\.$"
+           answer "{{ .Name }} 60 IN A 10.96.0.80"
+           fallthrough
+        }
+        template IN AAAA 127.0.0.1.nip.io {
+           match "^(.+\.)?127\.0\.0\.1\.nip\.io\.$"
+           rcode NOERROR
+           fallthrough
+        }
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf {
+           max_concurrent 1000
+        }
+        cache 30 {
+           disable success cluster.local
+           disable denial cluster.local
+        }
+        loop
+        reload
+        loadbalance
+    }
