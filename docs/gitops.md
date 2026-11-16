@@ -13,7 +13,7 @@ make try-tenant && make try-postgres-database        # same checks as the local 
 
 The branch must be pushed: Argo CD runs inside the cluster and reads Git, not your working tree.
 
-The Argo CD UI is at **https://argocd.127.0.0.1.nip.io**, behind the platform Gateway (see [gateway.md](gateway.md); run `make local-ca-trust` once so the browser trusts the certificate). User `admin`, password:
+The Argo CD UI is at **https://argocd.127.0.0.1.nip.io**, behind the platform Gateway (see [gateway.md](gateway.md); run `make local-ca-trust` once so the browser trusts the certificate). Sign in with **Log in via GitHub** ([sso.md](sso.md)), or as the local `admin`, password:
 
 ```sh
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
@@ -39,6 +39,7 @@ The root Application `platform` renders `bootstrap/apps/` (the "app of apps" pat
 | -1 | `gateway`, `argocd-route` | `platform/gateway/` (platform Gateway, local CA issuer, wildcard certificate) and `bootstrap/argocd/route/`. See [gateway.md](gateway.md) |
 | -1 | `postgres-server`, `openbao-server` | Upstream Helm charts + `platform/*/values.yaml` from this repo |
 | 0 | `providers` | `providers/` kustomize base |
+| 0 | `dex`, `access` | Dex chart + `platform/dex/values.yaml`, and `platform/access/` (cluster roles for teams). See [sso.md](sso.md) |
 | 0 | `portal` | `platform/portal/` chart: the portal at `https://portal.127.0.0.1.nip.io`, with the installation's org and instances repository |
 | 1 | `compositions` | `compositions/` kustomize base |
 | -1 | `external-secrets` | External Secrets Operator Helm chart + `platform/external-secrets/values.yaml` |
@@ -49,7 +50,7 @@ Chart versions are pinned in `bootstrap/apps/values.yaml` and in the Makefile (`
 
 ## Bootstrap Secrets: deliberately not in Git
 
-Five Secrets hold dev-default credentials or the installation's own and are created by `make bootstrap-secrets` before Argo CD syncs anything, exactly as the local flow does:
+Six Secrets hold dev-default credentials or the installation's own and are created by `make bootstrap-secrets` before Argo CD syncs anything, exactly as the local flow does:
 
 | Secret | Namespace | Read by |
 |---|---|---|
@@ -58,6 +59,7 @@ Five Secrets hold dev-default credentials or the installation's own and are crea
 | `openbao-creds` | `openbao-system` | provider-vault `ClusterProviderConfig` |
 | `idplatformkit-local-ca` | `cert-manager` | cert-manager's local CA `ClusterIssuer`. The key pair is generated once on the host (`.local-ca/`, git-ignored), see [gateway.md](gateway.md) |
 | `portal-secrets` | `backstage-system` | The portal: your OAuth App (from `.idpk.env`) and the GitHub token its catalog reads the org with (your `gh` token, or `GITHUB_TOKEN`) |
+| `dex-secrets` | `dex` | Dex: the org, its own OAuth App (from `.idpk.env`), and the Argo CD client secret, generated once. The same client secret is in `dex-argocd` (`argocd` namespace) for Argo CD |
 
 This imperative step is a bootstrap stopgap: External Secrets Operator delivers *tenant* secrets, but the platform's own bootstrap credentials still have to exist before anything, ESO included, can run. The values are the same fixed local credentials as in the Makefile and are only meant for kind.
 
