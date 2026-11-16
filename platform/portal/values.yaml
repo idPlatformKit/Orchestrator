@@ -7,7 +7,7 @@
 image:
   repository: ghcr.io/idplatformkit/portal
   # Set by the Makefile (PORTAL_IMAGE_TAG) and the portal Application.
-  tag: sha-fdf8d0c
+  tag: sha-c0f4d73
   pullPolicy: IfNotPresent
 
 # Public URL of the portal, through the platform Gateway (platform/gateway/).

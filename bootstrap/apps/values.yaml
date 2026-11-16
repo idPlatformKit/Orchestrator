@@ -34,4 +34,4 @@ instances:
 # The portal image (ghcr.io/idplatformkit/portal), built by idPlatformKit/portal.
 # Pinned like the charts: keep in sync with PORTAL_IMAGE_TAG in the Makefile.
 portal:
-  imageTag: sha-fdf8d0c
+  imageTag: sha-c0f4d73
