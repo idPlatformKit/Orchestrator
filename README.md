@@ -79,7 +79,7 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ Tenant secrets delivered as Kubernetes `Secret`s by External Secrets Operator, from the tenant's own OpenBao namespace (cross-tenant access refused by OpenBao, tested)
 - ✅ Postgres databases added to a tenant from the portal (New Postgres database template), named `<namespace>_<name>` on the shared server so tenants can't collide ([#21](https://github.com/idPlatformKit/Orchestrator/issues/21))
 - ✅ Install on your own GitHub org in two commands (`make setup`, `make up`), with the portal running in the cluster. Verified end to end on a second org ([#45](https://github.com/idPlatformKit/Orchestrator/issues/45))
-- ✅ Single sign-on with Dex: GitHub teams of the installation's org as groups for Argo CD and kubectl (`platform-admins`, tenant teams); OpenBao next ([#28](https://github.com/idPlatformKit/Orchestrator/issues/28), [docs/sso.md](docs/sso.md))
+- ✅ Single sign-on with Dex: GitHub teams of the installation's org as groups for Argo CD, kubectl and OpenBao (`platform-admins`, and each tenant's team on its own namespace and secrets) ([#28](https://github.com/idPlatformKit/Orchestrator/issues/28), [docs/sso.md](docs/sso.md))
 - ✅ HTTPS entry point: Gateway API (Envoy Gateway), cert-manager with a local CA, `https://<name>.127.0.0.1.nip.io` for OpenBao and Argo CD, end-to-end tested in CI ([#27](https://github.com/idPlatformKit/Orchestrator/issues/27))
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**

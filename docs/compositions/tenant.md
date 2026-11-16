@@ -35,11 +35,13 @@ flowchart TB
     PT --> VR["AuthBackendRole (inside VN)\nboundServiceAccountNames = [spec.vault.serviceAccountName]"]
     PT --> SA["ServiceAccount\nspec.vault.serviceAccountName"]
     PT --> SS["SecretStore openbao (External Secrets Operator)\nlogs in to VN with VR, as SA"]
+    PT --> OP["Policy tenant-name (root namespace)\nname/secret/*"]
+    PT --> OR["oidc role tenant-name (root namespace)\nbound to the ownerGroup, through Dex"]
     PT --> CEL["function-cel-filter\ndrops vault-* resources unless\nspec.vault.enabled == true"]
     CEL --> READY[function-auto-ready]
 ```
 
-The baseline (`Namespace`, `ResourceQuota`, `LimitRange`, `RoleBinding`, `NetworkPolicy`) is always created. The eight `vault-*` resources are always *composed* by `function-patch-and-transform` but then conditionally kept or dropped by a second pipeline step, `function-cel-filter`, matching every composed resource whose name matches `vault-.*` against one CEL expression: `has(observed.composite.resource.spec.vault) && observed.composite.resource.spec.vault.enabled`. This is what lets one Composition serve both "just a namespace" and "namespace + secrets space" claims — no second Composition, no per-capability XRD.
+The baseline (`Namespace`, `ResourceQuota`, `LimitRange`, `RoleBinding`, `NetworkPolicy`) is always created. The ten `vault-*` resources are always *composed* by `function-patch-and-transform` but then conditionally kept or dropped by a second pipeline step, `function-cel-filter`, matching every composed resource whose name matches `vault-.*` against one CEL expression: `has(observed.composite.resource.spec.vault) && observed.composite.resource.spec.vault.enabled`. This is what lets one Composition serve both "just a namespace" and "namespace + secrets space" claims — no second Composition, no per-capability XRD.
 
 ## Why OpenBao, not Vault
 
@@ -85,6 +87,12 @@ Code: 403
 ```
 
 The `payments` role only accepts `payments`' own ServiceAccount from the `payments` namespace.
+
+### For people: the team's OpenBao role
+
+The Composition also creates, in OpenBao's **root** namespace where the platform's `oidc` auth method is, a policy and a role named `tenant-<name>` (`vault-oidc-policy`, `vault-oidc-role`). The role only accepts members of the tenant's `ownerGroup`, signed in with GitHub through Dex, and its policy only grants `<name>/secret/*`. So the team can read and write its secrets in OpenBao's UI or CLI, like it uses its namespace with kubectl, without any shared token. See [sso.md](../sso.md#openbao).
+
+Tested: signed in to the UI with role `tenant-demo` as a member of the owner team, the `demo` namespace's `secret/db-credentials` was readable, and reading elsewhere was refused.
 
 ### Directly, from a pod
 

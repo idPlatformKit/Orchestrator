@@ -76,7 +76,7 @@ if kubectl get namespace argocd >/dev/null 2>&1; then
 	pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null)
 	printf '  Argo CD   https://argocd.%s   Log in via GitHub (or admin / %s)\n' "$DOMAIN" "${pw:-?}"
 fi
-printf '  OpenBao   https://openbao.%s/ui   token root-local-dev\n' "$DOMAIN"
+printf '  OpenBao   https://openbao.%s/ui   OIDC: role admin, or tenant-<name> (or token root-local-dev)\n' "$DOMAIN"
 if kubectl config get-contexts idpk-sso >/dev/null 2>&1; then
 	printf '  kubectl   kubectl --context idpk-sso   as yourself, through Dex\n'
 else
