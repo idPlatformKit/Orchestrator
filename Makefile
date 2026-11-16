@@ -118,16 +118,17 @@ providers-apply:
 		-f providers/provider-vault.yaml \
 		-f providers/function-patch-and-transform.yaml \
 		-f providers/function-auto-ready.yaml \
-		-f providers/function-cel-filter.yaml \
+		-f providers/function-go-templating.yaml \
 		-f providers/function-sequencer.yaml \
-		-f providers/tenant-native-resources-rbac.yaml
+		-f providers/tenant-native-resources-rbac.yaml \
+		-f providers/tenants-namespace.yaml
 	kubectl wait --for=condition=Healthy --timeout=180s \
 		provider.pkg.crossplane.io/provider-sql \
 		provider.pkg.crossplane.io/provider-vault
 	kubectl wait --for=condition=Healthy --timeout=180s \
 		function.pkg.crossplane.io/function-patch-and-transform \
 		function.pkg.crossplane.io/function-auto-ready \
-		function.pkg.crossplane.io/function-cel-filter \
+		function.pkg.crossplane.io/function-go-templating \
 		function.pkg.crossplane.io/function-sequencer
 	kubectl apply -f providers/postgres-providerconfig.yaml
 
@@ -227,6 +228,8 @@ policies-apply:
 	kubectl apply -k platform/policies/
 	kubectl wait --for=jsonpath='{.status.conditionStatus.ready}'=true --timeout=120s \
 		validatingpolicy.policies.kyverno.io/tenant-require-resources \
+		validatingpolicy.policies.kyverno.io/prod-images-by-digest \
+		validatingpolicy.policies.kyverno.io/prod-min-replicas \
 		mutatingpolicy.policies.kyverno.io/tenant-owner-label
 
 # Needs the demo-team tenant from try-tenant. Server-side dry runs only.
@@ -517,22 +520,12 @@ try-postgres-database:
 	kubectl wait --for=condition=Ready --timeout=180s -f examples/postgres-database.yaml
 	kubectl get secret demo-app-db-conn -n default -o yaml
 
+# The demo-team tenant, staging and prod, then a secret written in each
+# environment's OpenBao mount and delivered by External Secrets Operator.
 try-tenant:
 	kubectl apply -f examples/tenant.yaml
 	kubectl wait --for=condition=Ready --timeout=180s -f examples/tenant.yaml
-	kubectl get namespace demo-team
-	kubectl get resourcequota,limitrange,rolebinding,networkpolicy -n demo-team
-	kubectl get vaultnamespace.vault.vault.m.upbound.io,mount.vault.vault.m.upbound.io,policy.vault.vault.m.upbound.io -n demo-team
-	kubectl get serviceaccount demo-app -n demo-team
-	kubectl get secretstore openbao -n demo-team
-	@# Write a secret into the tenant's own OpenBao namespace (dev root token),
-	@# then let External Secrets Operator deliver it as a Kubernetes Secret.
-	kubectl exec -n $(OPENBAO_NAMESPACE) $(OPENBAO_RELEASE)-0 -- \
-		env BAO_TOKEN=$(OPENBAO_DEV_ROOT_TOKEN) BAO_NAMESPACE=demo-team \
-		bao kv put secret/db-credentials password=from-openbao-demo-team
-	kubectl apply -f examples/tenant-external-secret.yaml
-	kubectl wait --for=condition=Ready --timeout=60s -f examples/tenant-external-secret.yaml
-	@echo "db-credentials/password in Kubernetes: $$(kubectl get secret db-credentials -n demo-team -o jsonpath='{.data.password}' | base64 -d)"
+	./scripts/try-tenant.sh
 
 # Read-only ServiceAccount for the portal's Kubernetes plugin
 # (platform/backstage-reader/). The GitOps flow installs it with Argo CD.

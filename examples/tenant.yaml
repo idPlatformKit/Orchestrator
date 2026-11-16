@@ -4,9 +4,11 @@ metadata:
   name: demo-team
 spec:
   ownerGroup: demo-team-engineers
+  # The namespaces demo-team-staging and demo-team-prod (the default).
+  environments: [staging, prod]
   vault:
     enabled: true
-    # Created by the composition in the demo-team namespace. It's the only
-    # ServiceAccount allowed to read the tenant's OpenBao secrets, and the
-    # identity the tenant's SecretStore uses.
+    # Created by the composition in each environment's namespace. It's the
+    # only ServiceAccount allowed to read that environment's OpenBao
+    # secrets, and the identity of the environment's SecretStore.
     serviceAccountName: demo-app

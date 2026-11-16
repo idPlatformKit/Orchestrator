@@ -22,11 +22,28 @@ spec:
                 ownerGroup:
                   type: string
                   description: >-
-                    Group bound to the `edit` ClusterRole in the tenant's
-                    namespace.
+                    The team that owns the tenant: `edit` in its staging
+                    namespace, `view` in its prod namespace, and read/write
+                    on its OpenBao secrets.
+                environments:
+                  type: array
+                  description: >-
+                    The environments the tenant runs in, among the
+                    platform's. Each one is a namespace named
+                    `<tenant>-<environment>` with its own rules: see
+                    docs/environments.md.
+                  items:
+                    type: string
+                    enum: [staging, prod]
+                  minItems: 1
+                  maxItems: 2
+                  x-kubernetes-list-type: set
+                  default: [staging, prod]
                 vault:
                   type: object
-                  description: Optional Vault secrets space for this tenant.
+                  description: >-
+                    Optional OpenBao secrets space for this tenant: one
+                    OpenBao namespace, with a KV mount per environment.
                   properties:
                     enabled:
                       type: boolean
@@ -34,10 +51,10 @@ spec:
                     serviceAccountName:
                       type: string
                       description: >-
-                        The only Kubernetes ServiceAccount (in this tenant's
-                        namespace) allowed to authenticate as this tenant's
-                        Vault policy. Created by this composition, and used
-                        by the tenant's External Secrets Operator SecretStore.
+                        The ServiceAccount, created by this composition in
+                        each environment's namespace, allowed to read that
+                        environment's secrets. Used by the environment's
+                        External Secrets Operator SecretStore.
                   required:
                     - serviceAccountName
               required:

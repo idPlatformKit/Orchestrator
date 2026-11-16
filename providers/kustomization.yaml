@@ -10,8 +10,9 @@ resources:
   - provider-vault.yaml
   - function-patch-and-transform.yaml
   - function-auto-ready.yaml
-  - function-cel-filter.yaml
+  - function-go-templating.yaml
   - function-sequencer.yaml
   - tenant-native-resources-rbac.yaml
+  - tenants-namespace.yaml
   - postgres-providerconfig.yaml
   - openbao-providerconfig.yaml
