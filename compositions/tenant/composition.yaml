@@ -23,6 +23,8 @@ spec:
             {{- $tenant := $xr.metadata.name }}
             {{- $owner := $xr.spec.ownerGroup }}
             {{- $vault := and $xr.spec.vault $xr.spec.vault.enabled }}
+            {{- /* Composed resources that already exist, by name. */}}
+            {{- $observed := .observed.resources | default dict }}
             {{- /*
               What each environment changes (docs/environments.md):
               - pss: the Pod Security Standard Pod Security Admission
@@ -46,8 +48,11 @@ spec:
               annotations:
                 {{ setResourceNameAnnotation (printf "namespace-%s" $env) }}
                 # Plain native resources have no Ready condition to wait on:
-                # ready as soon as they exist.
+                # ready once they exist. Not before: the sequencer below
+                # would let what lives in the namespace go first.
+                {{- if hasKey $observed (printf "namespace-%s" $env) }}
                 gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
               labels:
                 # Pod Security Admission (built into Kubernetes) refuses pods
                 # below this Pod Security Standard.
@@ -70,7 +75,9 @@ spec:
               namespace: {{ $ns }}
               annotations:
                 {{ setResourceNameAnnotation (printf "resourcequota-%s" $env) }}
+                {{- if hasKey $observed (printf "resourcequota-%s" $env) }}
                 gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
             spec:
               hard:
                 requests.cpu: "4"
@@ -86,7 +93,9 @@ spec:
               namespace: {{ $ns }}
               annotations:
                 {{ setResourceNameAnnotation (printf "limitrange-%s" $env) }}
+                {{- if hasKey $observed (printf "limitrange-%s" $env) }}
                 gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
             spec:
               limits:
                 - type: Container
@@ -104,7 +113,9 @@ spec:
               namespace: {{ $ns }}
               annotations:
                 {{ setResourceNameAnnotation (printf "rolebinding-%s" $env) }}
+                {{- if hasKey $observed (printf "rolebinding-%s" $env) }}
                 gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
             roleRef:
               apiGroup: rbac.authorization.k8s.io
               kind: ClusterRole
@@ -121,7 +132,9 @@ spec:
               namespace: {{ $ns }}
               annotations:
                 {{ setResourceNameAnnotation (printf "networkpolicy-%s" $env) }}
+                {{- if hasKey $observed (printf "networkpolicy-%s" $env) }}
                 gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
             spec:
               podSelector: {}
               policyTypes:
@@ -274,7 +287,9 @@ spec:
               namespace: {{ $ns }}
               annotations:
                 {{ setResourceNameAnnotation (printf "vault-serviceaccount-%s" $env) }}
+                {{- if hasKey $observed (printf "vault-serviceaccount-%s" $env) }}
                 gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
             {{- /* Teams declare ExternalSecrets against this store to get
                    the environment's secrets as Kubernetes Secrets. ESO
                    validates it against OpenBao and reports Ready. */}}
