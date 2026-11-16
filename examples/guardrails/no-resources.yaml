@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: guardrails-no-resources
-  namespace: demo-team
+  namespace: demo-team-staging
 spec:
   selector:
     matchLabels: {app: guardrails-no-resources}

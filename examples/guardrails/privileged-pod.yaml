@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: guardrails-privileged
-  namespace: demo-team
+  namespace: demo-team-staging
 spec:
   containers:
     - name: shell

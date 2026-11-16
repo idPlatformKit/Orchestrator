@@ -1,0 +1,25 @@
+# In prod, Deployments and StatefulSets run at least 2 replicas, so that a
+# node drain or a rollout never takes the app down. Scaling through the
+# scale subresource (kubectl scale, an autoscaler) isn't checked.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: prod-min-replicas
+  annotations:
+    policies.kyverno.io/title: At least 2 replicas in prod
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [deployments, statefulsets]
+    namespaceSelector:
+      matchLabels:
+        platform.idplatformkit.io/environment: prod
+  validations:
+    - expression: has(object.spec.replicas) && object.spec.replicas >= 2
+      messageExpression: >-
+        'In prod, ' + object.kind + 's run at least 2 replicas (spec.replicas: ' +
+        (has(object.spec.replicas) ? string(object.spec.replicas) : 'unset, so 1') + ')'

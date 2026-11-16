@@ -1,0 +1,29 @@
+# Accepted in a prod namespace: resources declared, image pinned by digest
+# (the one promoted from staging), 2 replicas, and a pod that meets the
+# "restricted" Pod Security Standard.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardrails-prod
+  namespace: demo-team-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: guardrails-prod}
+  template:
+    metadata:
+      labels: {app: guardrails-prod}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: web
+          # nginxinc/nginx-unprivileged:1.29
+          image: nginxinc/nginx-unprivileged@sha256:18d5312e3b7e455cf9e4fb8becfc2dafaf98063dab542759c2a38708956574b7
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 128Mi}
