@@ -1,0 +1,45 @@
+# Members of the org's platform-admins team administer OpenBao: every path,
+# in every namespace (a root-namespace policy covers child namespaces through
+# their path prefix, e.g. demo/secret/...).
+apiVersion: vault.vault.m.upbound.io/v1alpha1
+kind: Policy
+metadata:
+  name: platform-admin
+  namespace: openbao-system
+spec:
+  forProvider:
+    name: platform-admin
+    policy: |
+      path "*" {
+        capabilities = ["create", "read", "update", "patch", "delete", "list", "sudo"]
+      }
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: vault-local
+---
+# Dex sends teams as "<org>:<team>", and only for the installation's org:
+# the glob matches the platform-admins team of that org, without naming it.
+apiVersion: jwt.vault.m.upbound.io/v1alpha1
+kind: AuthBackendRole
+metadata:
+  name: admin
+  namespace: openbao-system
+spec:
+  forProvider:
+    backend: oidc
+    roleName: admin
+    roleType: oidc
+    userClaim: preferred_username
+    groupsClaim: groups
+    oidcScopes: [profile, email, groups]
+    boundClaimsType: glob
+    boundClaims:
+      groups: "*:platform-admins"
+    allowedRedirectUris:
+      - https://openbao.127.0.0.1.nip.io/ui/vault/auth/oidc/oidc/callback
+      - http://localhost:8250/oidc/callback
+    tokenPolicies: [platform-admin]
+    tokenTtl: 3600
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: vault-local
