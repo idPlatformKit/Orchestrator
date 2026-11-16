@@ -1,5 +1,4 @@
-# Accepted in a tenant namespace. It claims another owner: tenant-owner-label
-# overwrites it with the tenant's team.
+# Accepted in a tenant namespace: it declares its resources.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,9 +9,7 @@ spec:
     matchLabels: {app: guardrails-compliant}
   template:
     metadata:
-      labels:
-        app: guardrails-compliant
-        platform.idplatformkit.io/owner: someone-else
+      labels: {app: guardrails-compliant}
     spec:
       containers:
         - name: web

@@ -30,12 +30,19 @@ refused examples/guardrails/privileged-pod.yaml 'violates PodSecurity "baseline'
 echo "2. A Deployment without resources (tenant-require-resources)"
 refused examples/guardrails/no-resources.yaml 'resources.requests.cpu'
 
-echo "3. A compliant Deployment claiming another owner (tenant-owner-label)"
-got=$(dry_run examples/guardrails/compliant.yaml -o jsonpath='{.spec.template.metadata.labels.platform\.idplatformkit\.io/owner}')
-[ "$got" = "$owner" ] || fail "owner label is '$got', expected '$owner'"
-echo "accepted, owner label set to $got"
+echo "3. A Deployment that declares its resources"
+dry_run examples/guardrails/compliant.yaml >/dev/null || fail "compliant.yaml was refused"
+echo "accepted"
 
-echo "4. Outside tenant namespaces, nothing changes"
+echo "4. A pod claiming another owner, without resources (tenant-owner-label, LimitRange)"
+pod=$(dry_run examples/guardrails/other-owner-pod.yaml -o json)
+got=$(echo "$pod" | jq -r '.metadata.labels["platform.idplatformkit.io/owner"]')
+[ "$got" = "$owner" ] || fail "owner label is '$got', expected '$owner'"
+mem=$(echo "$pod" | jq -r '.spec.containers[0].resources.limits.memory')
+[ "$mem" != null ] || fail "the LimitRange's defaults weren't applied"
+echo "accepted, owner label set to $got, memory limit $mem from the LimitRange"
+
+echo "5. Outside tenant namespaces, nothing changes"
 sed 's/namespace: demo-team/namespace: default/' examples/guardrails/no-resources.yaml \
   | kubectl apply --dry-run=server -f - >/dev/null || fail "refused outside a tenant"
 echo "accepted in default"
