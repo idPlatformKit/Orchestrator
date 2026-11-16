@@ -65,7 +65,7 @@ On kind (Kubernetes 1.36), fresh `make up` from this change:
 - **Agents**: `make agent-kubeconfig NAME=check` → `system:serviceaccount:idpk-agents:check`; `get tenants` `yes`, `get secrets -n demo` `no`, `delete tenants` `no`, `create namespaces` `no`.
 - **Portal**: no `backstage-reader-token` Secret anymore; `make backstage-token` returned a token for `backstage-reader` expiring 8 hours after issue.
 - **Argo CD**: signing in as `admin` through the API returned `Invalid username or password`; `admin.enabled` is `false`.
-- **CI**: checked in the e2e workflow (`make try-ci-identity`), see the pull request's runs.
+- **CI**: in both e2e jobs, the job's OIDC token alone (`make try-ci-identity`, kubectl with no kubeconfig) signed in as `github-actions:idPlatformKit/Orchestrator`, group `github-actions`; `get tenants` `yes`, `get secrets -n kube-system` `no`, `create namespaces` `no`.
 
 ## What remains shared, and why
 
