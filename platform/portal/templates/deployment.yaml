@@ -33,6 +33,9 @@ spec:
               value: {{ .Values.github.org | quote }}
             - name: IDPK_INSTANCES_REPO
               value: {{ .Values.github.instancesRepo | quote }}
+            # Shown on the portal's admin page.
+            - name: PORTAL_IMAGE
+              value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           envFrom:
             - secretRef:
                 name: {{ .Values.secretName }}
