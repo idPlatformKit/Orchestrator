@@ -68,7 +68,7 @@ Verified on fresh kind clusters (kind v0.32.0, OrbStack on macOS) with both `mak
 
 **`envoy-gateway` is briefly `Degraded` on a fresh cluster.** In the GitOps flow, right after the chart's `certgen` hook Job completes, the `envoy-gateway` Application reports `Degraded` with no individual resource reported unhealthy. It lasted about 3.5 minutes on the first run and 8 seconds on a later one. The exact cause wasn't pinned down. It matters because a sync wave fails when one of its Applications is `Degraded`: on the first run, the root app `platform` failed its wave five times in a row, gave up on that revision, and never created `compositions` and `instances`. The root app now has an explicit `retry` (`bootstrap/root-app.yaml`), as the `providers` app already had for its `ClusterProviderConfig`s. On the later run, the root app synced on its first attempt, so that retry wasn't exercised there.
 
-**Not done yet: in-cluster callers.** Inside the cluster, `*.127.0.0.1.nip.io` resolves to the caller's own loopback (the pod, or the node for host-network components such as the API server), not to the Gateway. Nothing needs it yet. SSO (M5) will: the API server and Argo CD will have to reach Dex by its public URL, which needs a CoreDNS rewrite to the Envoy Service and the local CA trusted in those components.
+**In-cluster callers.** Inside the cluster, `*.127.0.0.1.nip.io` resolves to the caller's own loopback (the pod, or the node for host-network components such as the API server), not to the Gateway. Since single sign-on, these names resolve to the Gateway's fixed ClusterIP inside the cluster too: CoreDNS for pods, `hostAliases` for the API server. See [sso.md](sso.md#reaching-dex-from-inside-the-cluster).
 
 ## Limits
 

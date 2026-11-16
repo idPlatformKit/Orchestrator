@@ -2,7 +2,8 @@
 # portal's OAuth App. Written by `make setup` (git-ignored, never committed).
 -include .idpk.env
 IDPK_INSTANCES_REPO ?= instances
-export IDPK_GITHUB_ORG IDPK_INSTANCES_REPO AUTH_GITHUB_CLIENT_ID AUTH_GITHUB_CLIENT_SECRET
+export IDPK_GITHUB_ORG IDPK_INSTANCES_REPO AUTH_GITHUB_CLIENT_ID AUTH_GITHUB_CLIENT_SECRET \
+	DEX_GITHUB_CLIENT_ID DEX_GITHUB_CLIENT_SECRET
 # The portal image (ghcr.io/idplatformkit/portal), built by idPlatformKit/portal.
 # Pinned like the charts: keep in sync with bootstrap/apps/values.yaml.
 PORTAL_IMAGE_TAG ?= sha-fdf8d0c
@@ -17,6 +18,7 @@ OPENBAO_CHART_VERSION ?= 0.30.4
 ESO_CHART_VERSION ?= 2.14.0
 CERT_MANAGER_CHART_VERSION ?= v1.21.3
 ENVOY_GATEWAY_CHART_VERSION ?= v1.9.3
+DEX_CHART_VERSION ?= 0.26.0
 
 # Local CA signing the platform's HTTPS certificates. Generated once, kept
 # outside the cluster so it survives `make local-down` (see local-ca below).
@@ -38,6 +40,7 @@ GITOPS_REPO_URL ?= https://github.com/idPlatformKit/Orchestrator.git
 GITOPS_REVISION ?= main
 
 .PHONY: setup up down status require-config portal-secret portal-install \
+	dex-secret dex-install kubeconfig-sso \
 	kind-up kind-down crossplane-install crossplane-uninstall \
 	providers-apply openbao-providerconfig-apply \
 	postgres-server-install postgres-server-uninstall \
@@ -76,8 +79,16 @@ require-config:
 		exit 1; \
 	fi
 
-kind-up:
-	kind create cluster --name $(CLUSTER_NAME) --config local/kind-config.yaml
+# The cluster, then CoreDNS answering every *.127.0.0.1.nip.io name with the
+# platform Gateway's ClusterIP (local/coredns.yaml), so pods reach the
+# platform's HTTPS hostnames the way the browser does.
+kind-up: local-ca
+	scripts/render.sh local/authentication-config.yaml .idpk/apiserver/authentication-config.yaml
+	sed 's|__ORCHESTRATOR_DIR__|$(CURDIR)|' local/kind-config.yaml | \
+		kind create cluster --name $(CLUSTER_NAME) --config -
+	kubectl apply -f local/coredns.yaml
+	kubectl rollout restart deployment/coredns -n kube-system
+	kubectl rollout status deployment/coredns -n kube-system --timeout=120s
 
 kind-down:
 	kind delete cluster --name $(CLUSTER_NAME)
@@ -285,6 +296,10 @@ try-gateway:
 	@if kubectl get namespace $(ARGOCD_NAMESPACE) >/dev/null 2>&1; then \
 		echo "https://argocd.$(PLATFORM_DOMAIN) -> $$(curl -fsS --cacert $(LOCAL_CA_DIR)/ca.crt -o /dev/null -w '%{http_code}' https://argocd.$(PLATFORM_DOMAIN)/)"; \
 	fi
+	@if kubectl get deployment dex -n dex >/dev/null 2>&1; then \
+		issuer=$$(curl -fsS --cacert $(LOCAL_CA_DIR)/ca.crt https://dex.$(PLATFORM_DOMAIN)/.well-known/openid-configuration | sed -n 's/.*"issuer": *"\([^"]*\)".*/\1/p') || exit 1; \
+		echo "https://dex.$(PLATFORM_DOMAIN) issuer -> $$issuer"; \
+	fi
 	@if kubectl get deployment portal -n backstage-system >/dev/null 2>&1; then \
 		r=$$(curl -fsS --cacert $(LOCAL_CA_DIR)/ca.crt https://portal.$(PLATFORM_DOMAIN)/.backstage/health/v1/readiness) || exit 1; \
 		echo "https://portal.$(PLATFORM_DOMAIN) readiness -> $$r"; \
@@ -310,6 +325,64 @@ portal-secret: require-config
 		--from-literal=AUTH_GITHUB_CLIENT_SECRET="$$AUTH_GITHUB_CLIENT_SECRET" \
 		--dry-run=client -o yaml | kubectl apply -f - >/dev/null && \
 	echo "secret/portal-secrets configured"
+
+# --- Single sign-on with Dex (see docs/sso.md) ---
+
+# Dex's credentials: its own GitHub OAuth App (from .idpk.env), the
+# installation's org, and the Argo CD client secret, generated once and kept
+# on re-runs. Argo CD reads the same client secret from dex-argocd.
+dex-secret: require-config
+	@if [ -z "$$DEX_GITHUB_CLIENT_ID" ] || [ -z "$$DEX_GITHUB_CLIENT_SECRET" ]; then \
+		echo "No GitHub OAuth App for Dex in .idpk.env: run 'make setup'."; exit 1; \
+	fi
+	@kubectl create namespace dex --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+	@argocd_secret=$$(kubectl get secret dex-secrets -n dex -o jsonpath='{.data.ARGOCD_CLIENT_SECRET}' 2>/dev/null | base64 -d); \
+	[ -n "$$argocd_secret" ] || argocd_secret=$$(openssl rand -hex 24); \
+	kubectl create secret generic dex-secrets --namespace dex \
+		--from-literal=IDPK_GITHUB_ORG="$$IDPK_GITHUB_ORG" \
+		--from-literal=GITHUB_CLIENT_ID="$$DEX_GITHUB_CLIENT_ID" \
+		--from-literal=GITHUB_CLIENT_SECRET="$$DEX_GITHUB_CLIENT_SECRET" \
+		--from-literal=ARGOCD_CLIENT_SECRET="$$argocd_secret" \
+		--dry-run=client -o yaml | kubectl apply -f - >/dev/null && \
+	if kubectl get namespace $(ARGOCD_NAMESPACE) >/dev/null 2>&1; then \
+		kubectl create secret generic dex-argocd --namespace $(ARGOCD_NAMESPACE) \
+			--from-literal=clientSecret="$$argocd_secret" --dry-run=client -o yaml | \
+			kubectl label --local -f - app.kubernetes.io/part-of=argocd -o yaml | \
+			kubectl apply -f - >/dev/null; \
+	fi && \
+	echo "secret/dex-secrets configured"
+
+# Local flow only: the GitOps flow installs the same chart and RBAC with Argo CD.
+dex-install: dex-secret
+	helm repo add dex https://charts.dexidp.io --force-update
+	helm repo update dex
+	helm upgrade --install dex dex/dex \
+		--namespace dex \
+		--version $(DEX_CHART_VERSION) \
+		--values platform/dex/values.yaml \
+		--wait
+	kubectl apply -k platform/access/
+
+# Adds an `idpk-sso` context to your kubeconfig: kubectl as yourself, signed
+# in with GitHub through Dex (kubelogin opens your browser). What you can do
+# depends on your teams: edit on your tenants' namespaces, everything for
+# platform-admins.
+kubeconfig-sso: local-ca
+	@kubectl oidc-login --help >/dev/null 2>&1 || { \
+		echo "kubelogin is missing: brew install kubelogin, or kubectl krew install oidc-login"; exit 1; }
+	kubectl config set-credentials idpk-sso \
+		--exec-api-version=client.authentication.k8s.io/v1 \
+		--exec-interactive-mode=IfAvailable \
+		--exec-command=kubectl \
+		--exec-arg=oidc-login \
+		--exec-arg=get-token \
+		--exec-arg=--oidc-issuer-url=https://dex.$(PLATFORM_DOMAIN) \
+		--exec-arg=--oidc-client-id=kubernetes \
+		--exec-arg=--oidc-extra-scope=profile \
+		--exec-arg=--oidc-extra-scope=groups \
+		--exec-arg=--certificate-authority=$(CURDIR)/$(LOCAL_CA_DIR)/ca.crt
+	kubectl config set-context idpk-sso --cluster=kind-$(CLUSTER_NAME) --user=idpk-sso
+	@echo "Try: kubectl --context idpk-sso auth whoami"
 
 # Local flow only: the GitOps flow installs the same chart with Argo CD.
 portal-install: portal-secret backstage-reader-apply
@@ -367,20 +440,24 @@ local-up: kind-up crossplane-install providers-apply postgres-server-install ope
 # Same end state as local-up, but only Argo CD and the bootstrap Secrets are
 # installed by hand; Argo CD installs everything else from this repo.
 
-bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets local-ca-secret portal-secret
+bootstrap-secrets: postgres-bootstrap-secrets openbao-bootstrap-secrets local-ca-secret portal-secret dex-secret
 
 # --timeout 10m: helm's default 5m was hit in CI while the kind node was
 # still pulling Argo CD's images. The redis ImagePullBackOff seen there turned
 # out to be ECR Public rate limiting (429), fixed in bootstrap/argocd/values.yaml;
 # the longer timeout covers genuinely slow pulls from shared CI runners.
-argocd-install:
+# Sign-in through Dex: local/argocd-sso-values.yaml, rendered with the
+# installation's org and the local CA.
+argocd-install: require-config local-ca
 	helm repo add argo https://argoproj.github.io/argo-helm --force-update
 	helm repo update argo
+	scripts/render.sh local/argocd-sso-values.yaml .idpk/argocd-sso-values.yaml
 	helm upgrade --install argocd argo/argo-cd \
 		--namespace $(ARGOCD_NAMESPACE) \
 		--create-namespace \
 		--version $(ARGOCD_CHART_VERSION) \
 		--values bootstrap/argocd/values.yaml \
+		--values .idpk/argocd-sso-values.yaml \
 		--wait --timeout 10m
 
 # GITOPS_REPO_URL/GITOPS_REVISION let you point Argo CD at a fork or a

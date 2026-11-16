@@ -5,7 +5,8 @@ targetRevision: main
 
 # Upstream chart versions, pinned. Keep in sync with the Makefile
 # (CROSSPLANE_VERSION, POSTGRES_CHART_VERSION, OPENBAO_CHART_VERSION,
-# ESO_CHART_VERSION, CERT_MANAGER_CHART_VERSION, ENVOY_GATEWAY_CHART_VERSION) so both install paths deploy the same thing.
+# ESO_CHART_VERSION, CERT_MANAGER_CHART_VERSION, ENVOY_GATEWAY_CHART_VERSION,
+# DEX_CHART_VERSION) so both install paths deploy the same thing.
 charts:
   crossplane: 2.4.0
   postgresql: 18.12.15
@@ -13,6 +14,7 @@ charts:
   externalSecrets: 2.14.0
   certManager: v1.21.3
   envoyGateway: v1.9.3
+  dex: 0.26.0
 
 # The installation: the GitHub org whose members use the portal and whose
 # teams own tenants, and its instances repository. Set by the root

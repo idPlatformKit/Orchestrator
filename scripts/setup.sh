@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 ENV_FILE=.idpk.env
 TEMPLATE_REPO=idPlatformKit/instances-template
 PORTAL_URL=https://portal.127.0.0.1.nip.io
-CALLBACK_URL=$PORTAL_URL/api/auth/github/handler/frame
+DEX_URL=https://dex.127.0.0.1.nip.io
 
 if [ -t 1 ]; then
 	bold=$(printf '\033[1m'); dim=$(printf '\033[2m'); red=$(printf '\033[31m')
@@ -61,6 +61,7 @@ printf 'At the end, %smake up%s builds the platform.\n' "$bold" "$reset"
 
 # Existing configuration, if any.
 IDPK_GITHUB_ORG=''; IDPK_INSTANCES_REPO=''; AUTH_GITHUB_CLIENT_ID=''; AUTH_GITHUB_CLIENT_SECRET=''
+DEX_GITHUB_CLIENT_ID=''; DEX_GITHUB_CLIENT_SECRET=''
 if [ -f "$ENV_FILE" ]; then
 	# shellcheck disable=SC1090
 	. "./$ENV_FILE"
@@ -68,7 +69,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # --- 1. Tools ---------------------------------------------------------------
-step "1/5  Tools"
+step "1/6  Tools"
 missing=0
 need() {
 	local cmd=$1 hint=$2
@@ -87,8 +88,26 @@ need gh "brew install gh, or https://cli.github.com/"
 need openssl "brew install openssl, or your package manager"
 need git "https://git-scm.com/downloads"
 need curl "your package manager"
+if kubectl oidc-login --help >/dev/null 2>&1; then
+	ok "kubelogin (kubectl oidc-login)"
+else
+	warn "kubelogin is missing: only needed for kubectl as yourself (make kubeconfig-sso)."
+	info "brew install kubelogin, or kubectl krew install oidc-login"
+fi
 if [ "$missing" = 1 ]; then
 	printf '\nInstall the missing tools, then run %smake setup%s again.\n' "$bold" "$reset"
+	exit 1
+fi
+
+# The cluster's node image (local/kind-config.yaml) and its kubeadm patches
+# need kind v0.32 or later: older versions write a kubeadm config the
+# patches don't fit.
+kind_version=$(kind version 2>/dev/null | sed -n 's/^kind v\([0-9]*\)\.\([0-9]*\).*/\1 \2/p')
+set -- $kind_version
+if [ "${1:-0}" -gt 0 ] || [ "${2:-0}" -ge 32 ]; then
+	ok "kind v${1:-?}.${2:-?} (v0.32 or later)"
+else
+	fail "kind v${1:-?}.${2:-?} is too old: v0.32 or later is needed. brew upgrade kind, or https://kind.sigs.k8s.io/"
 	exit 1
 fi
 
@@ -115,7 +134,7 @@ else
 fi
 
 # --- 2. GitHub CLI ----------------------------------------------------------
-step "2/5  GitHub access"
+step "2/6  GitHub access"
 if ! gh auth status -h github.com >/dev/null 2>&1; then
 	fail "The GitHub CLI isn't signed in."
 	info "Run: gh auth login -h github.com -s read:org,read:user,user:email"
@@ -153,7 +172,7 @@ else
 fi
 
 # --- 3. Your GitHub org -------------------------------------------------------
-step "3/5  Your GitHub org"
+step "3/6  Your GitHub org"
 info "IdPlatformKit runs on a GitHub org: its members sign in to the portal, and"
 info "its teams own the tenants. Use a test org if you just want to try it."
 orgs=$(gh api user/orgs --jq '.[].login' 2>/dev/null | tr '\n' ' ')
@@ -185,8 +204,24 @@ else
 	info "Create one at https://github.com/orgs/$org/new-team (you can do it later)."
 fi
 
+# Members of platform-admins are admins of the platform: cluster-admin with
+# kubectl, admin in Argo CD. Everyone else in the org gets read access.
+if gh api "orgs/$org/teams/platform-admins" >/dev/null 2>&1; then
+	ok "Team platform-admins exists: its members administer the platform"
+else
+	info "Members of a ${bold}platform-admins${reset} team administer the platform (kubectl, Argo CD)."
+	if confirm "Create platform-admins in $org, with you in it?"; then
+		gh api -X POST "orgs/$org/teams" -f name=platform-admins -f privacy=closed \
+			-f description="IdPlatformKit platform administrators" >/dev/null
+		gh api -X PUT "orgs/$org/teams/platform-admins/memberships/$GH_USER" -f role=maintainer >/dev/null
+		ok "Created platform-admins, with $GH_USER as maintainer"
+	else
+		warn "No platform-admins team: nobody gets admin rights through sign-in."
+	fi
+fi
+
 # --- 4. Your instances repository -------------------------------------------
-step "4/5  Your instances repository"
+step "4/6  Your instances repository"
 info "Every Tenant and database on your platform is a file in this repository."
 info "The portal opens pull requests to it, Argo CD syncs it."
 ask repo "Repository name:" "${IDPK_INSTANCES_REPO:-instances}"
@@ -210,53 +245,68 @@ else
 	fi
 fi
 
-# --- 5. The portal's OAuth App ----------------------------------------------
-step "5/5  Signing in to the portal"
-info "The portal signs you in with GitHub through an OAuth App owned by $org."
-info "GitHub has no API to create one: it takes a minute in the browser."
-reuse=1
-if [ -n "$AUTH_GITHUB_CLIENT_ID" ] && [ "${IDPK_GITHUB_ORG:-}" = "$org" ]; then
-	confirm "Keep the OAuth App from $ENV_FILE ($AUTH_GITHUB_CLIENT_ID)?" || reuse=0
-else
-	reuse=0
-fi
-if [ "$reuse" = 0 ]; then
+# oauth_app ID_VAR SECRET_VAR "App name" homepage callback
+# Walks the user through creating an OAuth App owned by the org (GitHub has
+# no API for it), unless .idpk.env already has one for this org.
+oauth_app() {
+	local id_var=$1 secret_var=$2 name=$3 homepage=$4 callback=$5 current_id
+	eval "current_id=\${$id_var:-}"
+	if [ -n "$current_id" ] && [ "${IDPK_GITHUB_ORG:-}" = "$org" ]; then
+		if confirm "Keep the OAuth App from $ENV_FILE ($current_id)?"; then return 0; fi
+	fi
 	new_app_url="https://github.com/organizations/$org/settings/applications/new"
 	printf '\n'
 	info "Open ${bold}$new_app_url${reset}"
 	info "and fill in:"
-	info "  Application name             IdPlatformKit portal"
-	info "  Homepage URL                 $PORTAL_URL"
-	info "  Authorization callback URL   $CALLBACK_URL"
+	info "  Application name             $name"
+	info "  Homepage URL                 $homepage"
+	info "  Authorization callback URL   $callback"
 	info "Leave \"Enable Device Flow\" unchecked, click Register application,"
 	info "then Generate a new client secret."
 	printf '\n'
 	if confirm "Open that page now?"; then open_url "$new_app_url"; fi
-	ask AUTH_GITHUB_CLIENT_ID "Client ID:"
+	ask "$id_var" "Client ID:"
 	printf '  Client secret (hidden): '
-	read -rs AUTH_GITHUB_CLIENT_SECRET
+	read -rs "$secret_var"
 	printf '\n'
-	if [ -z "$AUTH_GITHUB_CLIENT_ID" ] || [ -z "$AUTH_GITHUB_CLIENT_SECRET" ]; then
+	eval "[ -n \"\$$id_var\" ] && [ -n \"\$$secret_var\" ]" || {
 		fail "Both are needed. Run make setup again when you have them."
 		exit 1
-	fi
+	}
 	ok "OAuth App configured"
-fi
+}
+
+# --- 5. The portal's OAuth App ----------------------------------------------
+step "5/6  Signing in to the portal"
+info "The portal signs you in with GitHub through an OAuth App owned by $org."
+info "GitHub has no API to create one: it takes a minute in the browser."
+oauth_app AUTH_GITHUB_CLIENT_ID AUTH_GITHUB_CLIENT_SECRET "IdPlatformKit portal" \
+	"$PORTAL_URL" "$PORTAL_URL/api/auth/github/handler/frame"
+
+# --- 6. Dex's OAuth App -----------------------------------------------------
+step "6/6  Signing in to the platform"
+info "Argo CD and kubectl sign you in through Dex, which needs its own OAuth App"
+info "(an OAuth App has a single callback URL). Your teams in $org become groups."
+oauth_app DEX_GITHUB_CLIENT_ID DEX_GITHUB_CLIENT_SECRET "IdPlatformKit sign-in (Dex)" \
+	"$DEX_URL" "$DEX_URL/callback"
 
 # --- Write the configuration ------------------------------------------------
 umask 077
 cat > "$ENV_FILE" <<EOF
 # IdPlatformKit installation, written by \`make setup\`. Git-ignored: it holds
-# the OAuth App's client secret. Read by the Makefile.
+# the OAuth Apps' client secrets. Read by the Makefile.
 IDPK_GITHUB_ORG=$org
 IDPK_INSTANCES_REPO=$repo
 AUTH_GITHUB_CLIENT_ID=$AUTH_GITHUB_CLIENT_ID
 AUTH_GITHUB_CLIENT_SECRET=$AUTH_GITHUB_CLIENT_SECRET
+DEX_GITHUB_CLIENT_ID=$DEX_GITHUB_CLIENT_ID
+DEX_GITHUB_CLIENT_SECRET=$DEX_GITHUB_CLIENT_SECRET
 EOF
 
 step "Ready"
 ok "Wrote $ENV_FILE"
 printf '\nNext:\n'
-printf '  %smake up%s            builds the platform on kind (about 6 minutes)\n' "$bold" "$reset"
+printf '  %smake up%s            builds the platform on kind (about 5 minutes)\n' "$bold" "$reset"
 printf '  %smake local-ca-trust%s  once per machine, so your browser trusts the platform (sudo)\n' "$bold" "$reset"
 printf '\nThen open %s%s%s and sign in with GitHub.\n' "$bold" "$PORTAL_URL" "$reset"
+printf 'For kubectl as yourself: %smake kubeconfig-sso%s.\n' "$bold" "$reset"

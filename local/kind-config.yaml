@@ -1,8 +1,19 @@
+# The kind cluster. `make kind-up` replaces __ORCHESTRATOR_DIR__ with this
+# repository's absolute path, for the extraMounts.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: idplatformkit-local
+networking:
+  # Explicit because the platform Gateway's fixed ClusterIP, 10.96.0.80, must
+  # be in it (platform/gateway/envoyproxy.yaml).
+  serviceSubnet: 10.96.0.0/16
 nodes:
   - role: control-plane
+    # Pinned: the API server's structured authentication configuration
+    # (local/authentication-config.yaml) needs Kubernetes 1.34+, and the
+    # kubeadm patches below use the kubeadm v1beta4 format (extraArgs as a
+    # list). Image from the kind v0.32.0 release notes.
+    image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
     # Host ports 80/443 -> the Envoy Gateway Service's fixed NodePorts (see
     # platform/gateway/envoyproxy.yaml), so https://<name>.127.0.0.1.nip.io
     # reaches the platform Gateway without port-forwards. Bound to 127.0.0.1
@@ -16,3 +27,30 @@ nodes:
         hostPort: 443
         listenAddress: 127.0.0.1
         protocol: TCP
+    extraMounts:
+      # kubeadm patches for the control plane's static Pods.
+      - hostPath: __ORCHESTRATOR_DIR__/local/kubeadm-patches
+        containerPath: /kind/kubeadm-patches
+        readOnly: true
+      # The API server's authentication configuration, rendered by
+      # `make kind-up` from local/authentication-config.yaml.
+      - hostPath: __ORCHESTRATOR_DIR__/.idpk/apiserver
+        containerPath: /etc/kubernetes/idpk
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        patches:
+          directory: /kind/kubeadm-patches
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            - name: authentication-config
+              value: /etc/kubernetes/idpk/authentication-config.yaml
+          extraVolumes:
+            - name: idpk-auth
+              hostPath: /etc/kubernetes/idpk
+              mountPath: /etc/kubernetes/idpk
+              readOnly: true
+              pathType: Directory

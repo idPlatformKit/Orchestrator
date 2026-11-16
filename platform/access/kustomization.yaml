@@ -1,0 +1,6 @@
+# Cluster-wide access for people, through Dex (platform/dex/). Tenants' own
+# access is in each Tenant (a RoleBinding to its ownerGroup).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - platform-admins.yaml

@@ -1,0 +1,23 @@
+# Argo CD sign-in through Dex, on top of bootstrap/argocd/values.yaml.
+# Rendered by `make argocd-install` into .idpk/ with this installation's org
+# and the local CA (Argo CD reaches Dex at its public URL, through the
+# platform Gateway, and must trust the certificate).
+configs:
+  cm:
+    oidc.config: |
+      name: GitHub
+      issuer: https://dex.127.0.0.1.nip.io
+      clientID: argocd
+      # The dex-argocd Secret (argocd namespace), created by `make dex-secret`
+      # with the same value as Dex's ARGOCD_CLIENT_SECRET.
+      clientSecret: $dex-argocd:clientSecret
+      requestedScopes: [openid, profile, email, groups]
+      rootCA: |
+        __LOCAL_CA__
+  rbac:
+    # Everyone signed in can look; the org's platform-admins team can act.
+    # Argo CD gets Dex's groups as is: "<org>:<team>".
+    policy.default: role:readonly
+    policy.csv: |
+      g, __IDPK_GITHUB_ORG__:platform-admins, role:admin
+    scopes: '[groups]'

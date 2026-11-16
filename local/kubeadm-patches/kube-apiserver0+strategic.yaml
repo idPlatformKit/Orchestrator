@@ -1,0 +1,11 @@
+# kubeadm patch for the API server's static Pod (see local/kind-config.yaml).
+# The API server runs on the node's network, where *.127.0.0.1.nip.io
+# resolves to the node itself. These names point it at the platform Gateway's
+# fixed ClusterIP (platform/gateway/envoyproxy.yaml) instead: it needs Dex's
+# issuer URL for OIDC. The kubelet honours hostAliases on hostNetwork Pods
+# (checked on kind with Kubernetes 1.36).
+spec:
+  hostAliases:
+    - ip: 10.96.0.80
+      hostnames:
+        - dex.127.0.0.1.nip.io

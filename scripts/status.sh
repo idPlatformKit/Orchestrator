@@ -74,9 +74,14 @@ printf '\n%sOpen%s\n' "$bold" "$reset"
 printf '  Portal    https://portal.%s   sign in with GitHub (a member of %s)\n' "$DOMAIN" "$IDPK_GITHUB_ORG"
 if kubectl get namespace argocd >/dev/null 2>&1; then
 	pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null)
-	printf '  Argo CD   https://argocd.%s   admin / %s\n' "$DOMAIN" "${pw:-?}"
+	printf '  Argo CD   https://argocd.%s   Log in via GitHub (or admin / %s)\n' "$DOMAIN" "${pw:-?}"
 fi
 printf '  OpenBao   https://openbao.%s/ui   token root-local-dev\n' "$DOMAIN"
+if kubectl config get-contexts idpk-sso >/dev/null 2>&1; then
+	printf '  kubectl   kubectl --context idpk-sso   as yourself, through Dex\n'
+else
+	printf '  kubectl   make kubeconfig-sso   to use kubectl as yourself, through Dex\n'
+fi
 
 printf '\n%sTry it%s\n' "$bold" "$reset"
 printf '  In the portal: Create > New Tenant. It opens a pull request on %s/%s.\n' "$IDPK_GITHUB_ORG" "$IDPK_INSTANCES_REPO"

@@ -12,7 +12,7 @@ Then open **https://portal.127.0.0.1.nip.io** and sign in with GitHub.
 
 ## What you need
 
-- Docker running (Docker Desktop, OrbStack, Colima…), `kind`, `kubectl`, `helm`, `openssl`, `git`, `curl`, and the GitHub CLI `gh`, signed in.
+- Docker running (Docker Desktop, OrbStack, Colima…), `kind` v0.32 or later, `kubectl`, `helm`, `openssl`, `git`, `curl`, and the GitHub CLI `gh`, signed in. Optional: [kubelogin](https://github.com/int128/kubelogin), for kubectl as yourself (`make kubeconfig-sso`).
 - Host ports 80 and 443 free: the platform serves `https://<name>.127.0.0.1.nip.io` there, on `127.0.0.1` only.
 - A **GitHub org** you own, with **at least one team**. A free org is enough: create one at https://github.com/account/organizations/new. Use a test org if you're only trying IdPlatformKit.
 
@@ -35,6 +35,7 @@ An interactive script (`scripts/setup.sh`), safe to re-run: it offers to keep wh
    | Authorization callback URL | `https://portal.127.0.0.1.nip.io/api/auth/github/handler/frame` |
 
    Then it asks for the client ID and secret (typed hidden).
+6. **Dex's OAuth App**, the same way: Argo CD and kubectl sign you in through Dex, which needs its own OAuth App (homepage `https://dex.127.0.0.1.nip.io`, callback `https://dex.127.0.0.1.nip.io/callback`). Step 3 also offers to create a **`platform-admins`** team with you in it: its members administer the platform. See [sso.md](sso.md).
 
 It writes everything to **`.idpk.env`**: git-ignored, readable by you only (`600`), and read by the Makefile.
 
@@ -72,6 +73,7 @@ Without a configuration, `make up` stops with "run make setup first": nothing fa
 |---|---|
 | `IDPK_GITHUB_ORG`, `IDPK_INSTANCES_REPO` | The root Application's values (`bootstrap/root-app.yaml`): the `instances` Application syncs `https://github.com/<org>/<repo>.git`, the `portal` Application passes them to the portal |
 | `AUTH_GITHUB_CLIENT_ID`, `AUTH_GITHUB_CLIENT_SECRET` | The `portal-secrets` bootstrap Secret (`make portal-secret`), never in Git |
+| `DEX_GITHUB_CLIENT_ID`, `DEX_GITHUB_CLIENT_SECRET` | The `dex-secrets` bootstrap Secret (`make dex-secret`), never in Git |
 | Your `gh` token (or `GITHUB_TOKEN`) | Same Secret: the portal's catalog imports the org's members and teams with it |
 
 The portal runs in the cluster from the published image `ghcr.io/idplatformkit/portal`, through the `platform/portal/` chart, used by both install flows. Nothing in the portal names an org: see its [README](https://github.com/idPlatformKit/portal#one-installation-one-org).

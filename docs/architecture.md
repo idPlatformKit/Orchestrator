@@ -40,6 +40,7 @@ flowchart TB
         ESO[External Secrets Operator]
         GW[Envoy Gateway + cert-manager: HTTPS entry point]
         PORTAL[Portal: Backstage, in the cluster]
+        DEX[Dex: single sign-on with GitHub teams]
     end
     subgraph L2["Composition library (compositions/)"]
         XRD1[PostgresDatabase XRD + Composition]
@@ -97,6 +98,10 @@ Two "foundational infrastructure" servers, installed directly via Helm (not prov
 ### HTTPS entry point (`platform/gateway/`)
 
 Every platform UI is served over HTTPS on `https://<name>.127.0.0.1.nip.io`, through one Gateway API `Gateway` implemented by Envoy Gateway, with a wildcard certificate that cert-manager signs with a local CA. kind maps the host's ports 80/443 to the Envoy Service's fixed NodePorts. The CA is generated once on the host and loaded as a bootstrap Secret, so it is trusted once per machine. Same dev-only tier as the other platform services. Details and gotchas in [gateway.md](gateway.md).
+
+### Single sign-on (`platform/dex/`, `platform/access/`)
+
+Dex is the platform's OIDC issuer at `https://dex.127.0.0.1.nip.io`, with a GitHub connector on the installation's org: its teams are groups. Argo CD and the API server (kubectl, through kubelogin) trust it; RoleBindings name team slugs, so they don't depend on the org. Inside the cluster, the platform's hostnames resolve to the Gateway. Details: [sso.md](sso.md).
 
 ### Portal (`platform/portal/`)
 
