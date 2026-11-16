@@ -8,13 +8,17 @@ Every way into the platform is a named identity with its own scope, and every cr
 |---|---|---|---|---|---|
 | **A team member** | GitHub, through Dex ([sso.md](sso.md)) | `edit` on the namespaces of the team's tenants (the Tenant's `RoleBinding`) | Read | Role `tenant-<name>`: that tenant's secrets only | With the sign-in |
 | **A platform admin** (`platform-admins` team) | GitHub, through Dex | `cluster-admin` (`platform/access/platform-admins.yaml`) | Admin | Role `admin`: everything | With the sign-in |
-| **The portal** | Its pod's ServiceAccount token, `backstage-reader` | Read what it shows, no Secrets | – | – | Rotated by Kubernetes |
+| **The portal** | Its pod's ServiceAccount token, `backstage-reader` | Read what it shows (including Argo CD Applications, for its admin page), no Secrets | – | – | Rotated by Kubernetes |
 | **An agent** (`make agent-kubeconfig NAME=…`) | A ServiceAccount in `idpk-agents` | Read, no Secrets (`platform/access/agents.yaml`) | – | – | 8 hours by default |
 | **CI** (GitHub Actions of the org) | The job's GitHub OIDC token, audience `idplatformkit` | Read, no Secrets (`platform/access/ci.yaml`) | – | – | With the job |
 | **Break-glass** (`make break-glass WHO=…`) | A client certificate, `break-glass:<who>` | `cluster-admin`, **audited** | Through kubectl | – | 1 hour |
 | **A tenant's workloads** | Their ServiceAccount, through OpenBao's Kubernetes auth | What the team grants in its namespace | – | The tenant's secrets, through its `SecretStore` | Rotated by Kubernetes |
 
 Changes to the platform itself don't go through any of these: they're pull requests on the Orchestrator and instances repositories, merged by people, applied by Argo CD.
+
+## The portal's admin page
+
+Platform admins have an **Admin** page in the portal (`https://portal.127.0.0.1.nip.io/admin`): the installation (org, instances repository, portal image), a link to each tool with how to sign in, and every Argo CD Application's health and sync status. The portal's backend checks the signed-in user is in `platform-admins` on every request and refuses everyone else; it reads the Applications with `backstage-reader`, which is why that role can read `applications.argoproj.io` (and so can agents and CI, which share it). Applications carry no secrets. Details in the portal's README.
 
 ## Agents
 
