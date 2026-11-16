@@ -12,3 +12,17 @@ server:
   dev:
     enabled: true
     devRootToken: root-local-dev
+  # Sign-in through Dex (platform/openbao-sso/): OpenBao fetches Dex's
+  # discovery document at https://dex.127.0.0.1.nip.io and must trust the
+  # local CA. The idpk-local-ca ConfigMap (public certificate only) is created
+  # by `make local-ca-secret`.
+  extraEnvironmentVars:
+    SSL_CERT_FILE: /etc/idpk/ca.crt
+  volumes:
+    - name: idpk-local-ca
+      configMap:
+        name: idpk-local-ca
+  volumeMounts:
+    - name: idpk-local-ca
+      mountPath: /etc/idpk
+      readOnly: true

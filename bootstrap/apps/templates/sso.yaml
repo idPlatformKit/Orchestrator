@@ -51,3 +51,34 @@ spec:
     automated:
       prune: true
       selfHeal: true
+---
+# Wave 1: OpenBao's OIDC auth method and the platform-admins role
+# (platform/openbao-sso/), managed with provider-vault: its CRDs come with the
+# providers (wave 0). Each Tenant adds its own role.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openbao-sso
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: platform/openbao-sso
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

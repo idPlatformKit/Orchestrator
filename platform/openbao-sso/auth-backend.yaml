@@ -1,0 +1,23 @@
+# The OIDC auth method, at auth/oidc in the root namespace. OpenBao reaches
+# Dex at its public URL through the platform Gateway, and trusts it through
+# the local CA (SSL_CERT_FILE, platform/openbao-server/values.yaml).
+apiVersion: jwt.vault.m.upbound.io/v1alpha1
+kind: AuthBackend
+metadata:
+  name: oidc
+  namespace: openbao-system
+spec:
+  forProvider:
+    type: oidc
+    path: oidc
+    description: Sign-in with GitHub, through Dex
+    oidcDiscoveryUrl: https://dex.127.0.0.1.nip.io
+    oidcClientId: openbao
+    oidcClientSecretSecretRef:
+      name: openbao-oidc
+      key: client-secret
+    # Signing in without choosing a role tries the admin role.
+    defaultRole: admin
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: vault-local

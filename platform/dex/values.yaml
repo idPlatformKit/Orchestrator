@@ -50,6 +50,14 @@ config:
       secretEnv: ARGOCD_CLIENT_SECRET
       redirectURIs:
         - https://argocd.127.0.0.1.nip.io/auth/callback
+    # OpenBao's OIDC auth method (platform/openbao-sso/): the UI, and the
+    # CLI (`bao login -method=oidc`), which listens on localhost:8250.
+    - id: openbao
+      name: OpenBao
+      secretEnv: OPENBAO_CLIENT_SECRET
+      redirectURIs:
+        - https://openbao.127.0.0.1.nip.io/ui/vault/auth/oidc/oidc/callback
+        - http://localhost:8250/oidc/callback
 
 # TLS ends at the platform Gateway.
 httpRoute:
