@@ -1,0 +1,14 @@
+# The API server's audit policy: every request made with a break-glass
+# credential (`make break-glass`) is logged, with who did what, when and the
+# response code. Everything else isn't, to keep the log readable on kind.
+# Read it with `make break-glass-log`. Copied into .idpk/apiserver/ by
+# `make kind-up`, mounted into the node (local/kind-config.yaml).
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+rules:
+  - level: Metadata
+    userGroups:
+      - idpk:break-glass
+  - level: None

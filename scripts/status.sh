@@ -73,8 +73,7 @@ fi
 printf '\n%sOpen%s\n' "$bold" "$reset"
 printf '  Portal    https://portal.%s   sign in with GitHub (a member of %s)\n' "$DOMAIN" "$IDPK_GITHUB_ORG"
 if kubectl get namespace argocd >/dev/null 2>&1; then
-	pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null)
-	printf '  Argo CD   https://argocd.%s   Log in via GitHub (or admin / %s)\n' "$DOMAIN" "${pw:-?}"
+	printf '  Argo CD   https://argocd.%s   Log in via GitHub\n' "$DOMAIN"
 fi
 printf '  OpenBao   https://openbao.%s/ui   OIDC: role admin, or tenant-<name> (or token root-local-dev)\n' "$DOMAIN"
 if kubectl config get-contexts idpk-sso >/dev/null 2>&1; then

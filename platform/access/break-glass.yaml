@@ -1,0 +1,17 @@
+# Emergency access, for when single sign-on is down: cluster-admin for the
+# idpk:break-glass group. Nobody holds such a credential by default:
+# `make break-glass WHO=<name>` issues a client certificate valid one hour,
+# for that name only, and every request it makes is in the API server's
+# audit log (local/audit-policy.yaml, `make break-glass-log`).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: break-glass
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: idpk:break-glass

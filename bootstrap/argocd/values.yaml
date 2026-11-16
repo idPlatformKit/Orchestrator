@@ -15,6 +15,10 @@ configs:
 
   cm:
     url: https://argocd.127.0.0.1.nip.io
+    # No shared local admin: people sign in with GitHub through Dex
+    # (local/argocd-sso-values.yaml), platform-admins being Argo CD admins.
+    # In an emergency, break-glass is through kubectl (docs/access.md).
+    admin.enabled: "false"
 
     # Argo CD stopped assessing the health of Application resources in 1.8,
     # so out of the box an app-of-apps does NOT wait for a child app to be
