@@ -600,11 +600,25 @@ func deploymentReady(observed map[resource.Name]resource.ObservedComposed, name 
 		return 0, false
 	}
 	obj := o.Resource.Object
-	gen, _, _ := unstructured.NestedInt64(obj, "metadata", "generation")
-	seen, _, _ := unstructured.NestedInt64(obj, "status", "observedGeneration")
-	updated, _, _ := unstructured.NestedInt64(obj, "status", "updatedReplicas")
-	available, _, _ := unstructured.NestedInt64(obj, "status", "availableReplicas")
+	gen := nestedInt(obj, "metadata", "generation")
+	seen := nestedInt(obj, "status", "observedGeneration")
+	updated := nestedInt(obj, "status", "updatedReplicas")
+	available := nestedInt(obj, "status", "availableReplicas")
 	return available, seen >= gen && updated >= replicas && available >= replicas
+}
+
+// nestedInt reads a number of an observed resource. Observed resources reach
+// the function as protobuf Structs, whose numbers are float64:
+// unstructured.NestedInt64 finds no int64 there and returns 0.
+func nestedInt(obj map[string]any, fields ...string) int64 {
+	v, _, _ := unstructured.NestedFieldNoCopy(obj, fields...)
+	switch n := v.(type) {
+	case int64:
+		return n
+	case float64:
+		return int64(n)
+	}
+	return 0
 }
 
 func routeAccepted(observed map[resource.Name]resource.ObservedComposed, name resource.Name) bool {

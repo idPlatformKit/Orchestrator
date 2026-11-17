@@ -222,8 +222,9 @@ func TestCompose(t *testing.T) {
 	t.Run("ADeploymentIsReadyWhenAllItsReplicasAreAvailable", func(t *testing.T) {
 		o := readyDB()
 		o["deployment-api"] = map[string]any{
-			"metadata": map[string]any{"generation": int64(2)},
-			"status":   map[string]any{"observedGeneration": int64(2), "updatedReplicas": int64(1), "availableReplicas": int64(1)},
+			// Numbers reach the function as float64, from protobuf Structs.
+			"metadata": map[string]any{"generation": float64(2)},
+			"status":   map[string]any{"observedGeneration": float64(2), "updatedReplicas": float64(1), "availableReplicas": float64(1)},
 		}
 		c, err := Compose("orders", "shop-staging", staging, spec(), observed(o))
 		if err != nil {
