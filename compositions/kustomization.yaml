@@ -10,3 +10,5 @@ resources:
   - postgres-database/composition.yaml
   - tenant/xrd.yaml
   - tenant/composition.yaml
+  - app/xrd.yaml
+  - app/composition.yaml

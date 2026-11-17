@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-team-staging
+  labels:
+    platform.idplatformkit.io/tenant: demo-team
+    platform.idplatformkit.io/environment: staging

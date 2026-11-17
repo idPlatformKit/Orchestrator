@@ -1,0 +1,26 @@
+# Lets Crossplane manage what the App composition (functions/app) composes in
+# a tenant's environment namespaces: the components' Deployments, Services and
+# PodDisruptionBudgets, the NetworkPolicy that lets the Gateway in, and the
+# HTTPRoute on the platform's Gateway. Aggregated into Crossplane's own
+# ClusterRole, like crossplane-tenant-native-resources (NetworkPolicies are
+# already granted there). The function reads each App's Namespace for its
+# environment: Crossplane can already, through that ClusterRole.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-app-native-resources
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["*"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["*"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["*"]

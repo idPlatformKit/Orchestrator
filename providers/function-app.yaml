@@ -1,0 +1,9 @@
+# The App composition function, built from functions/app by the
+# function-app workflow. Pinned by commit, like the portal image: bump it
+# when functions/app changes (docs/compositions/app.md).
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-app
+spec:
+  package: ghcr.io/idplatformkit/function-app:sha-c007a70
