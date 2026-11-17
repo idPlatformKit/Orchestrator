@@ -209,7 +209,7 @@ func Compose(app, ns string, env Environment, spec Spec, observed map[resource.N
 		if !ok {
 			return nil, errors.Errorf("service %q: unknown type %q", name, s.Type)
 		}
-		rn := resource.Name("service-" + name)
+		rn := resource.Name(s.Type + "-" + name)
 		obj := kind.compose(app, name, ns)
 		ready := conditionTrue(observed, rn, "Ready")
 		servicesReady[name] = ready
@@ -256,7 +256,7 @@ func Compose(app, ns string, env Environment, spec Spec, observed map[resource.N
 		cmpStatus[name] = map[string]any{"ready": ready, "replicas": available}
 
 		if c.Port != 0 {
-			sn := resource.Name("service-" + name + "-svc")
+			sn := resource.Name("service-" + name)
 			_, exists := observed[sn]
 			add(out, sn, kubeService(app, name, ns, c.Port), exists)
 		}

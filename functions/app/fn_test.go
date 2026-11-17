@@ -81,7 +81,7 @@ func TestRunFunction(t *testing.T) {
 		},
 		"ComposesTheServicesFirst": {
 			ns:            tenantNs,
-			wantResources: []string{"service-db"},
+			wantResources: []string{"postgres-db"},
 		},
 	}
 	for name, tc := range cases {
@@ -137,7 +137,7 @@ func observed(objs map[resource.Name]map[string]any) map[resource.Name]resource.
 
 func readyDB() map[resource.Name]map[string]any {
 	return map[resource.Name]map[string]any{
-		"service-db": {"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+		"postgres-db": {"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
 	}
 }
 
@@ -160,7 +160,7 @@ func TestCompose(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The worker uses no service: it doesn't wait.
-		want := []string{"deployment-worker", "service-db"}
+		want := []string{"deployment-worker", "postgres-db"}
 		if diff := cmp.Diff(want, names(c)); diff != "" {
 			t.Errorf("(-want +got):\n%s", diff)
 		}
@@ -184,7 +184,7 @@ func TestCompose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := []string{"deployment-api", "deployment-worker", "networkpolicy-api", "route", "service-api-svc", "service-db"}
+		want := []string{"deployment-api", "deployment-worker", "networkpolicy-api", "postgres-db", "route", "service-api"}
 		if diff := cmp.Diff(want, names(c)); diff != "" {
 			t.Errorf("(-want +got):\n%s", diff)
 		}
@@ -195,8 +195,8 @@ func TestCompose(t *testing.T) {
 		if c.Status["url"] != "https://orders-shop-staging.127.0.0.1.nip.io" {
 			t.Errorf("url: got %v", c.Status["url"])
 		}
-		if c.Resources["service-db"].Ready != resource.ReadyTrue {
-			t.Error("service-db should be ready")
+		if c.Resources["postgres-db"].Ready != resource.ReadyTrue {
+			t.Error("postgres-db should be ready")
 		}
 		if c.Resources["deployment-api"].Ready != resource.ReadyFalse {
 			t.Error("deployment-api isn't observed: it can't be ready")

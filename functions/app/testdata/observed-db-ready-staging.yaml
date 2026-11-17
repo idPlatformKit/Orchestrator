@@ -4,7 +4,7 @@ metadata:
   name: hello-db
   namespace: demo-team-staging
   annotations:
-    crossplane.io/composition-resource-name: service-db
+    crossplane.io/composition-resource-name: postgres-db
 status:
   conditions:
     - type: Ready
