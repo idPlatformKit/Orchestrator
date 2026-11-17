@@ -12,7 +12,9 @@ resources:
   - function-auto-ready.yaml
   - function-go-templating.yaml
   - function-sequencer.yaml
+  - function-app.yaml
   - tenant-native-resources-rbac.yaml
+  - app-native-resources-rbac.yaml
   - tenants-namespace.yaml
   - postgres-providerconfig.yaml
   - openbao-providerconfig.yaml

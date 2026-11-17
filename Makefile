@@ -53,7 +53,8 @@ GITOPS_REVISION ?= main
 	backstage-reader-apply backstage-token \
 	external-secrets-install external-secrets-uninstall \
 	local-ca local-ca-secret local-ca-trust local-ca-untrust \
-	cert-manager-install envoy-gateway-install gateway-apply try-gateway try-ci-identity
+	cert-manager-install envoy-gateway-install gateway-apply try-gateway try-ci-identity \
+	function-app-test render-app try-app
 
 # --- Guided install (see docs/install.md) ---
 
@@ -120,7 +121,9 @@ providers-apply:
 		-f providers/function-auto-ready.yaml \
 		-f providers/function-go-templating.yaml \
 		-f providers/function-sequencer.yaml \
+		-f providers/function-app.yaml \
 		-f providers/tenant-native-resources-rbac.yaml \
+		-f providers/app-native-resources-rbac.yaml \
 		-f providers/tenants-namespace.yaml
 	kubectl wait --for=condition=Healthy --timeout=180s \
 		provider.pkg.crossplane.io/provider-sql \
@@ -129,7 +132,8 @@ providers-apply:
 		function.pkg.crossplane.io/function-patch-and-transform \
 		function.pkg.crossplane.io/function-auto-ready \
 		function.pkg.crossplane.io/function-go-templating \
-		function.pkg.crossplane.io/function-sequencer
+		function.pkg.crossplane.io/function-sequencer \
+		function.pkg.crossplane.io/function-app
 	kubectl apply -f providers/postgres-providerconfig.yaml
 
 # The Vault ClusterProviderConfig needs the openbao-creds Secret and a
@@ -526,6 +530,18 @@ try-tenant:
 	kubectl apply -f examples/tenant.yaml
 	kubectl wait --for=condition=Ready --timeout=180s -f examples/tenant.yaml
 	./scripts/try-tenant.sh
+
+# The App platform API (#24): unit tests of its function, a local render
+# without a cluster (ENV=prod, DB_READY=false), and the hello demo app
+# deployed on kind (needs make try-tenant).
+function-app-test:
+	cd functions/app && go vet ./... && go test ./...
+
+render-app:
+	./scripts/render-app.sh
+
+try-app:
+	./scripts/try-app.sh
 
 # Read-only ServiceAccount for the portal's Kubernetes plugin
 # (platform/backstage-reader/). The GitOps flow installs it with Argo CD.

@@ -1,0 +1,149 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: apps.platform.idplatformkit.io
+spec:
+  group: platform.idplatformkit.io
+  scope: Namespaced
+  names:
+    kind: App
+    plural: apps
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: URL
+          type: string
+          jsonPath: .status.url
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            An application of a tenant, in one of its environments: the
+            app.yaml of the app's repository, plus the images its CI built.
+            See docs/compositions/app.md.
+          properties:
+            spec:
+              type: object
+              properties:
+                images:
+                  type: object
+                  description: >-
+                    The images the app's CI built, by name, pinned by digest
+                    (name: registry/repository@sha256:...). Written by the
+                    CI, not by hand. Components refer to them by name.
+                  additionalProperties:
+                    type: string
+                    minLength: 1
+                services:
+                  type: object
+                  description: >-
+                    The services the app's components use, by name. Each one
+                    is provisioned by the platform, and its outputs are
+                    referenced in env as ${services.<name>.<output>}.
+                  maxProperties: 10
+                  additionalProperties:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        description: >-
+                          The kind of service. postgres: a database on the
+                          shared Postgres server, with the outputs host,
+                          port, database, username, password, url and
+                          jdbcUrl.
+                        enum: [postgres]
+                    required:
+                      - type
+                components:
+                  type: object
+                  description: >-
+                    The processes of the app, by name. Each one runs as a
+                    Deployment from one of the app's images.
+                  minProperties: 1
+                  maxProperties: 10
+                  additionalProperties:
+                    type: object
+                    properties:
+                      image:
+                        type: string
+                        description: The name of one of spec.images.
+                      port:
+                        type: integer
+                        description: >-
+                          The port the component listens on. It gets a
+                          Service, and probes on /healthz (liveness) and
+                          /readyz (readiness).
+                        minimum: 1
+                        maximum: 65535
+                      env:
+                        type: object
+                        description: >-
+                          Environment variables. Values can reference service
+                          outputs: ${services.<name>.<output>}.
+                        additionalProperties:
+                          type: string
+                      expose:
+                        type: object
+                        description: >-
+                          Publish the component on the platform's Gateway,
+                          at https://<app>-<namespace>.127.0.0.1.nip.io<path>.
+                          Needs port.
+                        properties:
+                          protocol:
+                            type: string
+                            enum: [http]
+                            default: http
+                          path:
+                            type: string
+                            pattern: "^/"
+                            default: /
+                      resources:
+                        type: object
+                        description: >-
+                          CPU and memory of each replica. Defaults: requests
+                          cpu 50m and memory 64Mi, memory limit 256Mi.
+                        properties:
+                          cpu:
+                            type: string
+                            description: CPU request.
+                          memory:
+                            type: string
+                            description: Memory request.
+                          memoryLimit:
+                            type: string
+                            description: Memory limit.
+                    required:
+                      - image
+              required:
+                - images
+                - components
+            status:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: Where the exposed components are published.
+                environment:
+                  type: string
+                  description: The environment of the app's namespace.
+                services:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      ready:
+                        type: boolean
+                      secret:
+                        type: string
+                        description: The Secret holding the service's connection details.
+                components:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      ready:
+                        type: boolean
+                      replicas:
+                        type: integer

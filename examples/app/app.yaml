@@ -1,0 +1,25 @@
+# The hello demo app (examples/app/hello) in the staging environment of the
+# demo-team tenant (make try-tenant creates it). `make try-app` builds its
+# image, loads it into kind and applies this.
+#
+# In a real app, spec is the app's app.yaml, and its CI adds spec.images,
+# pinned by digest, then opens this as a pull request on the instances
+# repository. Here the image is a local build loaded into kind, by tag: fine
+# in staging, refused in prod.
+apiVersion: platform.idplatformkit.io/v1alpha1
+kind: App
+metadata:
+  name: hello
+  namespace: demo-team-staging
+spec:
+  images:
+    hello: idpk-hello:dev
+  services:
+    db: { type: postgres }
+  components:
+    web:
+      image: hello
+      port: 8080
+      env:
+        DATABASE_URL: ${services.db.url}
+      expose: { path: / }

@@ -1,0 +1,16 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: app
+spec:
+  compositeTypeRef:
+    apiVersion: platform.idplatformkit.io/v1alpha1
+    kind: App
+  mode: Pipeline
+  pipeline:
+    # One function composes everything and reports readiness itself: the
+    # services, then the components once their services are ready. Its code
+    # is in functions/app.
+    - step: compose
+      functionRef:
+        name: function-app
