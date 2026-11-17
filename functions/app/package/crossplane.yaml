@@ -1,0 +1,8 @@
+apiVersion: meta.pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-app
+  annotations:
+    meta.crossplane.io/source: github.com/idPlatformKit/Orchestrator
+    meta.crossplane.io/description: Composes the App platform API of IdPlatformKit.
+spec: {}

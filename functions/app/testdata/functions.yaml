@@ -1,0 +1,9 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-app
+  annotations:
+    # Run against the function started locally: go run . --insecure
+    render.crossplane.io/runtime: Development
+spec:
+  package: function-app

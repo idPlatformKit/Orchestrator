@@ -1,0 +1,11 @@
+apiVersion: database.idplatformkit.io/v1alpha1
+kind: PostgresDatabase
+metadata:
+  name: hello-db
+  namespace: demo-team-prod
+  annotations:
+    crossplane.io/composition-resource-name: service-db
+status:
+  conditions:
+    - type: Ready
+      status: "True"
