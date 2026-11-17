@@ -588,6 +588,11 @@ gitops-wait:
 		--for=jsonpath='{.status.health.status}'=Healthy --timeout=600s
 	kubectl wait applications --all -n $(ARGOCD_NAMESPACE) \
 		--for=jsonpath='{.status.health.status}'=Healthy --timeout=300s
+	@# Health alone isn't enough for the claims: a claim that can't be
+	@# applied (say, in a namespace that doesn't exist) leaves the instances
+	@# Application OutOfSync, and still Healthy.
+	kubectl wait application/instances -n $(ARGOCD_NAMESPACE) \
+		--for=jsonpath='{.status.sync.status}'=Synced --timeout=300s
 	kubectl get applications -n $(ARGOCD_NAMESPACE)
 
 local-up-gitops: require-config kind-up argocd-install bootstrap-secrets gitops-root-apply gitops-wait
