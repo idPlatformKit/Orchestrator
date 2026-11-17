@@ -153,6 +153,13 @@ spec:
               namespaces behind Enterprise), with one KV v2 mount per
               environment. Every OpenBao object is a managed resource kept
               in the idpk-tenants namespace, out of the teams' reach.
+
+              Each one gets its external name up front, the same the
+              provider would record (the OpenBao path or name). Without it,
+              provider-vault once in a while created a Mount and failed to
+              record its external name; the next reconcile created it again,
+              and OpenBao answered "path is already in use" forever (#16).
+              With it, the provider observes and adopts what exists.
             */}}
             ---
             apiVersion: vault.vault.m.upbound.io/v1alpha1
@@ -162,6 +169,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation "vault-namespace" }}
+                crossplane.io/external-name: "{{ $tenant }}/"
             spec:
               forProvider:
                 path: {{ $tenant }}
@@ -183,6 +191,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation "vault-k8s-auth-backend" }}
+                crossplane.io/external-name: "kubernetes"
             spec:
               managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
               forProvider:
@@ -200,6 +209,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation "vault-k8s-auth-config" }}
+                crossplane.io/external-name: "auth/kubernetes/config"
             spec:
               managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
               forProvider:
@@ -223,6 +233,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation (printf "vault-mount-%s" $env) }}
+                crossplane.io/external-name: "{{ $env }}"
             spec:
               managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
               forProvider:
@@ -240,6 +251,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation (printf "vault-policy-%s" $env) }}
+                crossplane.io/external-name: "{{ $env }}"
             spec:
               managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
               forProvider:
@@ -263,6 +275,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation (printf "vault-k8s-role-%s" $env) }}
+                crossplane.io/external-name: "auth/kubernetes/role/{{ $env }}"
             spec:
               managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
               forProvider:
@@ -334,6 +347,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation "vault-oidc-policy" }}
+                crossplane.io/external-name: "tenant-{{ $tenant }}"
             spec:
               forProvider:
                 name: tenant-{{ $tenant }}
@@ -364,6 +378,7 @@ spec:
               namespace: idpk-tenants
               annotations:
                 {{ setResourceNameAnnotation "vault-oidc-role" }}
+                crossplane.io/external-name: "auth/oidc/role/tenant-{{ $tenant }}"
             spec:
               forProvider:
                 backend: oidc
