@@ -133,6 +133,20 @@ spec:
 
 Excluding `Delete` means Crossplane removes the Kubernetes object without calling the provider's delete on the external resource — correct here specifically because the parent `VaultNamespace`'s own (normal, `Delete`-included) deletion already does that recursively. This was found and fixed by actually toggling `spec.vault.enabled` off and watching a resource get stuck, twice — first with the wrong mechanism (`spec.deletionPolicy: Orphan`, which doesn't exist on this provider's schema), then with the right one.
 
+## Another gotcha: a Mount created twice ([#16](https://github.com/idPlatformKit/Orchestrator/issues/16))
+
+Once in a while, provider-vault created a resource in OpenBao and failed to record its external name on the managed resource. The next reconcile believed it didn't exist and created it again, and OpenBao refused it forever:
+
+```
+URL: POST http://openbao.openbao-system.svc.cluster.local:8200/v1/sys/mounts/prod
+Code: 400. Errors:
+* path is already in use at prod/
+```
+
+Seen twice: on a `secret` mount in about a dozen test Tenants, then on the `prod` mount of a Tenant created from the portal. That Mount's external name was empty, while every other one carried the OpenBao path (`prod`, `staging`, `auth/kubernetes/role/prod`...), and the Tenant stayed not `Ready`. Setting the annotation by hand, `crossplane.io/external-name: prod`, made the provider observe the existing mount and adopt it: `Ready` 5 seconds later, with no second mount in OpenBao.
+
+These names are deterministic, so the composition now sets `crossplane.io/external-name` on every OpenBao managed resource, with the values the provider records itself: `<tenant>/` for the `VaultNamespace`, the path for mounts and auth backends, the name for policies, `auth/<backend>/role/<role>` for roles. Checked on kind: the existing Tenants' managed resources stayed `Synced` and `Ready` when the annotations appeared, and ten Tenants created and deleted in a row were `Ready` in 2 to 15 seconds, with nothing left in OpenBao afterwards. Ten runs can't prove the race is gone, since it was rare; what they show is that setting the names up front doesn't get in the way of creation.
+
 ## Creation order: from 3 minutes to 3 seconds
 
 Crossplane applies every composed resource of a pipeline at once. For a `Tenant`, that's a problem twice over:
