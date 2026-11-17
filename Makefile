@@ -234,6 +234,7 @@ policies-apply:
 		validatingpolicy.policies.kyverno.io/tenant-require-resources \
 		validatingpolicy.policies.kyverno.io/prod-images-by-digest \
 		validatingpolicy.policies.kyverno.io/prod-min-replicas \
+		validatingpolicy.policies.kyverno.io/app-data-protection \
 		mutatingpolicy.policies.kyverno.io/tenant-owner-label
 
 # Needs the demo-team tenant from try-tenant. Server-side dry runs only.

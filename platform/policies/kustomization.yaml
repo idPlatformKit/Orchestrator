@@ -8,3 +8,5 @@ resources:
   - owner-label.yaml
   - prod-images-by-digest.yaml
   - prod-min-replicas.yaml
+  - kyverno-read-apps.yaml
+  - app-data-protection.yaml

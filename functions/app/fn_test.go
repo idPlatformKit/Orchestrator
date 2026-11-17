@@ -155,7 +155,7 @@ func TestCompose(t *testing.T) {
 	prod := Environment{Name: "prod", Tenant: "shop"}
 
 	t.Run("ComponentsWaitForTheirServices", func(t *testing.T) {
-		c, err := Compose("orders", "shop-staging", staging, spec(), nil)
+		c, err := Compose("orders", "shop-staging", staging, spec(), Confirmed{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -170,7 +170,7 @@ func TestCompose(t *testing.T) {
 	})
 
 	t.Run("ADeployedComponentStaysWhenItsServiceIsNotReady", func(t *testing.T) {
-		c, err := Compose("orders", "shop-staging", staging, spec(), observed(map[resource.Name]map[string]any{"deployment-api": {}}))
+		c, err := Compose("orders", "shop-staging", staging, spec(), Confirmed{}, observed(map[resource.Name]map[string]any{"deployment-api": {}}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -180,7 +180,7 @@ func TestCompose(t *testing.T) {
 	})
 
 	t.Run("Staging", func(t *testing.T) {
-		c, err := Compose("orders", "shop-staging", staging, spec(), observed(readyDB()))
+		c, err := Compose("orders", "shop-staging", staging, spec(), Confirmed{}, observed(readyDB()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,7 +204,7 @@ func TestCompose(t *testing.T) {
 	})
 
 	t.Run("ProdRunsTwoReplicasWithADisruptionBudget", func(t *testing.T) {
-		c, err := Compose("orders", "shop-prod", prod, spec(), observed(readyDB()))
+		c, err := Compose("orders", "shop-prod", prod, spec(), Confirmed{}, observed(readyDB()))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -226,7 +226,7 @@ func TestCompose(t *testing.T) {
 			"metadata": map[string]any{"generation": float64(2)},
 			"status":   map[string]any{"observedGeneration": float64(2), "updatedReplicas": float64(1), "availableReplicas": float64(1)},
 		}
-		c, err := Compose("orders", "shop-staging", staging, spec(), observed(o))
+		c, err := Compose("orders", "shop-staging", staging, spec(), Confirmed{}, observed(o))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -267,7 +267,7 @@ func TestCompose(t *testing.T) {
 			if a == "" {
 				a = "orders"
 			}
-			_, err := Compose(a, "shop-staging", staging, s, observed(readyDB()))
+			_, err := Compose(a, "shop-staging", staging, s, Confirmed{}, observed(readyDB()))
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("got %v, want an error containing %q", err, tc.want)
 			}
@@ -353,4 +353,57 @@ func TestResolveEnv(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRetainedServices(t *testing.T) {
+	staging := Environment{Name: "staging", Tenant: "shop"}
+	// The App had a database, cache-db, that isn't in its spec any more.
+	o := readyDB()
+	o["postgres-cache-db"] = map[string]any{"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}}
+
+	t.Run("ARemovedServiceIsKept", func(t *testing.T) {
+		c, err := Compose("orders", "shop-staging", staging, spec(), Confirmed{}, observed(o))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, ok := c.Resources["postgres-cache-db"]
+		if !ok {
+			t.Fatal("postgres-cache-db was removed: its database would be dropped")
+		}
+		if name := r.Resource.GetName(); name != "orders-cache-db" {
+			t.Errorf("recomposed as %q, want orders-cache-db", name)
+		}
+		want := map[string]any{"cache-db": map[string]any{"type": "postgres", "ready": true, "secret": "orders-cache-db-conn"}}
+		if diff := cmp.Diff(want, c.Status["retainedServices"]); diff != "" {
+			t.Errorf("retainedServices (-want +got):\n%s", diff)
+		}
+		if len(c.Warnings) != 1 || !strings.Contains(c.Warnings[0], "add cache-db to the annotation platform.idplatformkit.io/delete-services") {
+			t.Errorf("warnings: %v", c.Warnings)
+		}
+	})
+
+	t.Run("AConfirmedServiceIsDeleted", func(t *testing.T) {
+		for _, a := range []string{"cache-db", " other , cache-db ", "*"} {
+			c, err := Compose("orders", "shop-staging", staging, spec(), ParseDeleteServices(a), observed(o))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := c.Resources["postgres-cache-db"]; ok {
+				t.Errorf("annotation %q: postgres-cache-db is still composed", a)
+			}
+			if _, ok := c.Status["retainedServices"]; ok {
+				t.Errorf("annotation %q: retainedServices is still set", a)
+			}
+		}
+	})
+
+	t.Run("ConfirmingDoesNotDeleteAServiceStillInTheSpec", func(t *testing.T) {
+		c, err := Compose("orders", "shop-staging", staging, spec(), ParseDeleteServices("*"), observed(o))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := c.Resources["postgres-db"]; !ok {
+			t.Error("postgres-db is in the spec: it must stay")
+		}
+	})
 }

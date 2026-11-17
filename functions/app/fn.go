@@ -26,6 +26,11 @@ const (
 	labelApp       = "platform.idplatformkit.io/app"
 	labelComponent = "platform.idplatformkit.io/component"
 
+	// The services whose data the team confirmed can be deleted, comma
+	// separated, or "*": until then, a service removed from the spec is
+	// kept, and a policy refuses to delete the App (docs/compositions/app.md).
+	annotationDeleteServices = "platform.idplatformkit.io/delete-services"
+
 	// The key of the namespace in the required resources.
 	requiredNamespace = "namespace"
 
@@ -94,7 +99,8 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		return rsp, nil
 	}
 
-	c, err := Compose(oxr.Resource.GetName(), ns, env, spec, observed)
+	confirmed := ParseDeleteServices(oxr.Resource.GetAnnotations()[annotationDeleteServices])
+	c, err := Compose(oxr.Resource.GetName(), ns, env, spec, confirmed, observed)
 	if err != nil {
 		response.Fatal(rsp, err)
 		return rsp, nil
@@ -129,6 +135,9 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 
 	for _, w := range c.Waiting {
 		response.Normal(rsp, w)
+	}
+	for _, w := range c.Warnings {
+		response.Warning(rsp, errors.New(w)).TargetComposite()
 	}
 	return rsp, nil
 }
@@ -187,11 +196,39 @@ type Composed struct {
 	Status    map[string]any
 	// Why components aren't deployed yet.
 	Waiting []string
+	// Data kept although the spec no longer asks for it.
+	Warnings []string
+}
+
+// Confirmed is the set of services whose data may be deleted.
+type Confirmed struct {
+	All   bool
+	Names map[string]bool
+}
+
+// Has reports whether a service's data may be deleted.
+func (c Confirmed) Has(service string) bool { return c.All || c.Names[service] }
+
+// ParseDeleteServices reads the delete-services annotation: "db, cache", or
+// "*" for every service.
+func ParseDeleteServices(v string) Confirmed {
+	c := Confirmed{Names: map[string]bool{}}
+	for _, s := range strings.Split(v, ",") {
+		s = strings.TrimSpace(s)
+		switch s {
+		case "":
+		case "*":
+			c.All = true
+		default:
+			c.Names[s] = true
+		}
+	}
+	return c
 }
 
 // Compose an App: one platform API per service, and per component a
 // Deployment, a Service, and a route on the Gateway when it's exposed.
-func Compose(app, ns string, env Environment, spec Spec, observed map[resource.Name]resource.ObservedComposed) (*Composed, error) {
+func Compose(app, ns string, env Environment, spec Spec, confirmed Confirmed, observed map[resource.Name]resource.ObservedComposed) (*Composed, error) {
 	out := &Composed{Resources: map[resource.Name]*resource.DesiredComposed{}}
 	svcStatus := map[string]any{}
 	cmpStatus := map[string]any{}
@@ -215,6 +252,34 @@ func Compose(app, ns string, env Environment, spec Spec, observed map[resource.N
 		servicesReady[name] = ready
 		add(out, rn, obj, ready)
 		svcStatus[name] = map[string]any{"ready": ready, "secret": connSecret(app, name)}
+	}
+
+	// Services that were composed but are no longer in the spec, or whose
+	// type changed, hold data: they're kept until their deletion is
+	// confirmed, so that a removed line in app.yaml (and Argo CD's pruning)
+	// can't drop a database. They're recomposed from their name,
+	// <type>-<service>, which is why no service type may be named like the
+	// other composed resources (deployment, service, route...).
+	retained := map[string]any{}
+	for _, rn := range sortedKeys(observed) {
+		typ, name, ok := strings.Cut(string(rn), "-")
+		kind, isService := serviceKinds[typ]
+		if !ok || !isService {
+			continue
+		}
+		if s, inSpec := spec.Services[name]; inSpec && s.Type == typ {
+			continue
+		}
+		if confirmed.Has(name) {
+			out.Waiting = append(out.Waiting, fmt.Sprintf("service %s (%s) was removed and its deletion confirmed: deleting it and its data", name, typ))
+			continue
+		}
+		ready := conditionTrue(observed, rn, "Ready")
+		add(out, rn, kind.compose(app, name, ns), ready)
+		retained[name] = map[string]any{"type": typ, "ready": ready, "secret": connSecret(app, name)}
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"service %s (%s) was removed from spec.services, but its data is kept: to delete it, add %s to the annotation %s",
+			name, typ, name, annotationDeleteServices))
 	}
 
 	// Components.
@@ -274,6 +339,9 @@ func Compose(app, ns string, env Environment, spec Spec, observed map[resource.N
 	}
 
 	status := map[string]any{"environment": env.Name, "services": svcStatus, "components": cmpStatus}
+	if len(retained) > 0 {
+		status["retainedServices"] = retained
+	}
 	if len(routes) > 0 {
 		rn := resource.Name("route")
 		add(out, rn, httpRoute(app, ns, host, routes), routeAccepted(observed, rn))
@@ -639,11 +707,11 @@ func routeAccepted(observed map[resource.Name]resource.ObservedComposed, name re
 	return false
 }
 
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
+func sortedKeys[K ~string, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	return keys
 }

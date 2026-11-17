@@ -22,6 +22,9 @@ spec:
           description: >-
             An application of a tenant, in one of its environments: the
             app.yaml of the app's repository, plus the images its CI built.
+            Its services' data is protected: a service removed from the spec
+            is kept, and the App can't be deleted, until the annotation
+            platform.idplatformkit.io/delete-services lists them (or is "*").
             See docs/compositions/app.md.
           properties:
             spec:
@@ -138,6 +141,21 @@ spec:
                       secret:
                         type: string
                         description: The Secret holding the service's connection details.
+                retainedServices:
+                  type: object
+                  description: >-
+                    Services removed from spec.services whose data is kept
+                    until its deletion is confirmed in the annotation
+                    platform.idplatformkit.io/delete-services.
+                  additionalProperties:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      ready:
+                        type: boolean
+                      secret:
+                        type: string
                 components:
                   type: object
                   additionalProperties:
