@@ -48,12 +48,12 @@ flowchart LR
 OpenBao's `oidc` auth method, in its root namespace, signs people in through Dex (`platform/openbao-sso/`, managed with provider-vault like the tenants' OpenBao resources). Choose a role when signing in:
 
 - **`admin`**, the default role: `platform-admins` only, policy `platform-admin` (every path, every namespace).
-- **`tenant-<name>`**: created by each `Tenant` with OpenBao enabled, for its `ownerGroup` only. Its policy grants `<name>/secret/*` and nothing else. In the UI, sign in with that role, then switch to the tenant's namespace (top left) to see its secrets. From the CLI: `bao login -method=oidc -path=oidc role=tenant-<name>`.
+- **`tenant-<name>`**: created by each `Tenant` with OpenBao enabled, for its `ownerGroup` only. Its policy grants `<name>/<environment>/*` for each of the tenant's environments (`staging`, `prod`), and nothing else. In the UI, sign in with that role, then switch to the tenant's namespace (top left) to see its secrets. From the CLI: `bao login -method=oidc -path=oidc role=tenant-<name>`.
 
 Two choices keep this the same for every installation:
 
 - **The roles match teams with a glob**, `*:team-a`, rather than `<org>:team-a`. Dex only sends the installation's org's teams, so the glob can't match another org, and the Tenant composition doesn't need to know the org. A first design passed the org to the composition through a Crossplane `EnvironmentConfig`; the glob made it unnecessary.
-- **The team's policy lives in OpenBao's root namespace**, where the auth method is, and reaches the tenant's namespace through its path prefix. Checked by hand first: a root-namespace token with a policy on `demo/secret/*` read `demo`'s secret, and was refused with `403` in another tenant's namespace and on `demo`'s policies.
+- **The team's policy lives in OpenBao's root namespace**, where the auth method is, and reaches the tenant's namespace through its path prefix. Checked by hand first, when the tenant's mount was still `secret/`: a root-namespace token with a policy on `demo/secret/*` read `demo`'s secret, and was refused with `403` in another tenant's namespace and on `demo`'s policies.
 
 OpenBao reaches Dex at its public URL through the platform Gateway, and trusts the local CA through `SSL_CERT_FILE`, from the `idpk-local-ca` ConfigMap (the certificate only) created by `make local-ca-secret`.
 

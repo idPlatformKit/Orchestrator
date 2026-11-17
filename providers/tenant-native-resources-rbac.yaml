@@ -35,9 +35,9 @@ rules:
   # Kubernetes RBAC escalation prevention: creating a RoleBinding to a
   # ClusterRole requires either holding a superset of that ClusterRole's own
   # rules, or the "bind" verb on that specific ClusterRole. The Tenant
-  # composition only needs to bind the built-in "edit" ClusterRole, so grant
-  # that narrowly rather than mirroring all of "edit"'s (large) rule set.
+  # composition only binds the built-in "edit" (staging) and "view" (prod)
+  # ClusterRoles, so grant that narrowly rather than mirroring their rules.
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterroles"]
-    resourceNames: ["edit"]
+    resourceNames: ["edit", "view"]
     verbs: ["bind"]

@@ -6,13 +6,13 @@ Every way into the platform is a named identity with its own scope, and every cr
 
 | Identity | How it signs in | Kubernetes | Argo CD | OpenBao | Expires |
 |---|---|---|---|---|---|
-| **A team member** | GitHub, through Dex ([sso.md](sso.md)) | `edit` on the namespaces of the team's tenants (the Tenant's `RoleBinding`) | Read | Role `tenant-<name>`: that tenant's secrets only | With the sign-in |
+| **A team member** | GitHub, through Dex ([sso.md](sso.md)) | `edit` in the staging namespace of the team's tenants, `view` in prod: changes to prod go through pull requests ([environments.md](environments.md)) | Read | Role `tenant-<name>`: that tenant's secrets only, every environment | With the sign-in |
 | **A platform admin** (`platform-admins` team) | GitHub, through Dex | `cluster-admin` (`platform/access/platform-admins.yaml`) | Admin | Role `admin`: everything | With the sign-in |
 | **The portal** | Its pod's ServiceAccount token, `backstage-reader` | Read what it shows (including Argo CD Applications, for its admin page), no Secrets | – | – | Rotated by Kubernetes |
 | **An agent** (`make agent-kubeconfig NAME=…`) | A ServiceAccount in `idpk-agents` | Read, no Secrets (`platform/access/agents.yaml`) | – | – | 8 hours by default |
 | **CI** (GitHub Actions of the org) | The job's GitHub OIDC token, audience `idplatformkit` | Read, no Secrets (`platform/access/ci.yaml`) | – | – | With the job |
 | **Break-glass** (`make break-glass WHO=…`) | A client certificate, `break-glass:<who>` | `cluster-admin`, **audited** | Through kubectl | – | 1 hour |
-| **A tenant's workloads** | Their ServiceAccount, through OpenBao's Kubernetes auth | What the team grants in its namespace | – | The tenant's secrets, through its `SecretStore` | Rotated by Kubernetes |
+| **A tenant's workloads** | Their ServiceAccount, through OpenBao's Kubernetes auth | What the team grants in its namespace | – | Their environment's secrets only, through its `SecretStore` | Rotated by Kubernetes |
 
 Changes to the platform itself don't go through any of these: they're pull requests on the Orchestrator and instances repositories, merged by people, applied by Argo CD.
 

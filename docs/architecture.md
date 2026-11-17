@@ -33,7 +33,7 @@ flowchart TB
         CP[Crossplane v2.4.0]
         PSQL[provider-sql]
         PVAULT[provider-vault]
-        FN[Functions: patch-and-transform, auto-ready, cel-filter, sequencer]
+        FN[Functions: patch-and-transform, go-templating, auto-ready, sequencer]
         RBAC[ClusterRole: native resource composition]
         PG[(shared Postgres server)]
         OB[(shared OpenBao server)]
@@ -79,14 +79,15 @@ Applied once, before any composition or claim — these are prerequisites, not p
 |---|---|---|
 | `provider-sql` | Provider | Manages logical databases/roles on the shared Postgres server (`PostgresDatabase`) |
 | `provider-vault` | Provider | Manages Vault/OpenBao namespaces, mounts, policies and Kubernetes auth (`Tenant`'s optional add-on) |
-| `function-patch-and-transform` | Function | The composition engine for both XRDs — patches an XR's spec onto a set of composed resource templates |
+| `function-patch-and-transform` | Function | The composition engine of `PostgresDatabase`: patches an XR's spec onto a set of composed resource templates |
+| `function-go-templating` | Function | The composition engine of `Tenant`: a Go template, because a tenant composes one set of resources per environment, which patch-and-transform can't loop over. The Vault add-on is an `if` in it |
 | `function-auto-ready` | Function | Marks composed resources `Ready` once their own health signals say so (Crossplane managed resources) |
-| `function-cel-filter` | Function | Conditionally drops composed resources from the desired set based on a CEL expression over the XR's spec — this is how `Tenant`'s optional Vault add-on is toggled without a second Composition |
 | `function-sequencer` | Function | Holds composed resources back until the ones they depend on are `Ready`. `Tenant` uses it to create its Namespace before what lives in it, and its Vault namespace before what lives in that |
-| `crossplane-tenant-native-resources` | ClusterRole | Aggregates (`rbac.crossplane.io/aggregate-to-crossplane: "true"`) into Crossplane's own ClusterRole, granting it rights over `namespaces`, `resourcequotas`, `limitranges`, `rolebindings` and `networkpolicies` — plus the RBAC `bind` verb specifically on the `edit` ClusterRole, which Kubernetes' privilege-escalation check requires before Crossplane can create a `RoleBinding` to it |
+| `idpk-tenants` | Namespace | Where the `Tenant` composition keeps each tenant's OpenBao managed resources, out of the teams' namespaces |
+| `crossplane-tenant-native-resources` | ClusterRole | Aggregates (`rbac.crossplane.io/aggregate-to-crossplane: "true"`) into Crossplane's own ClusterRole, granting it rights over `namespaces`, `resourcequotas`, `limitranges`, `rolebindings` and `networkpolicies` — plus the RBAC `bind` verb specifically on the `edit` and `view` ClusterRoles, which Kubernetes' privilege-escalation check requires before Crossplane can create a `RoleBinding` to it |
 | `postgres-providerconfig.yaml`, `openbao-providerconfig.yaml` | ClusterProviderConfig | Point `provider-sql`/`provider-vault` at the shared local Postgres/OpenBao servers |
 
-Plain native-resource composed objects (`Namespace`, `ResourceQuota`, ...) don't carry a `Ready` status condition the way managed resources do — the `Tenant` composition marks those `readinessChecks: [{type: None}]` (ready as soon as created) rather than relying on `function-auto-ready` to infer it, since that inference isn't reliable across provider/function versions (see [compositions/tenant.md](compositions/tenant.md) for how this was actually discovered).
+Plain native-resource composed objects (`Namespace`, `ResourceQuota`, ...) don't carry a `Ready` status condition the way managed resources do. The `Tenant` composition marks them ready once they exist (go-templating's `ready` annotation, set only when the resource is observed) rather than relying on `function-auto-ready` to infer it, since that inference isn't reliable across provider/function versions (see [compositions/tenant.md](compositions/tenant.md) and [environments.md](environments.md#what-was-actually-observed)).
 
 ### Shared platform services (`platform/`)
 
@@ -109,7 +110,11 @@ Who can do what, as a matrix: [access.md](access.md). People through Dex; the po
 
 ### Guardrails (`platform/kyverno/`, `platform/policies/`)
 
-Tenant namespaces enforce the baseline Pod Security Standard (Pod Security Admission, a label set by the Tenant composition). Kyverno requires CPU and memory requests and a memory limit on workloads, and labels every pod with its owner team. Policies select tenant namespaces by label and leave platform namespaces alone. See [guardrails.md](guardrails.md).
+Tenant namespaces enforce a Pod Security Standard (Pod Security Admission, a label set by the Tenant composition): baseline in staging, restricted in prod. Kyverno requires CPU and memory requests and a memory limit on workloads, labels every pod with its owner team, and in prod requires images pinned by digest and at least 2 replicas. Policies select tenant namespaces by label and leave platform namespaces alone. See [guardrails.md](guardrails.md).
+
+### Environments
+
+Each tenant runs in staging, prod or both: one namespace per environment (`<tenant>-staging`, `<tenant>-prod`), with its own rules and secrets. Promotion to prod is by pull request, with the same image digest. See [environments.md](environments.md).
 
 ### Portal (`platform/portal/`)
 
@@ -120,7 +125,7 @@ The developer portal ([idPlatformKit/portal](https://github.com/idPlatformKit/po
 | Composition | Scope | What it gives a caller |
 |---|---|---|
 | [`PostgresDatabase`](compositions/postgres-database.md) | Namespaced | A logical Postgres database + role, connection details in a Secret |
-| [`Tenant`](compositions/tenant.md) | Cluster | A namespace baseline (quota, RBAC, network policy) plus an optional, toggleable, genuinely-isolated Vault secrets space |
+| [`Tenant`](compositions/tenant.md) | Cluster | A namespace baseline (quota, RBAC, network policy) per environment, plus an optional, toggleable, genuinely-isolated OpenBao secrets space with one mount per environment |
 
 Both follow the same shape: one shared backing service (Postgres / OpenBao) installed once at the platform level, and a Composition that provisions a caller-scoped slice of it (a database+role / a Vault namespace) rather than a dedicated instance per claim. That keeps local `kind` usage cheap and fast; it is a deliberate simplicity trade-off, not a scalability claim for a real multi-tenant production cluster.
 

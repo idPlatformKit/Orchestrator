@@ -6,3 +6,5 @@ kind: Kustomization
 resources:
   - require-resources.yaml
   - owner-label.yaml
+  - prod-images-by-digest.yaml
+  - prod-min-replicas.yaml

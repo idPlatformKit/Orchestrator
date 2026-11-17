@@ -54,14 +54,14 @@ make local-down              # clean up
 
 | Composition | Scope | What a team gets | Docs |
 |---|---|---|---|
-| `Tenant` | Cluster | Namespace baseline (quota, limits, RBAC, default-deny network) + optional isolated OpenBao namespace | [tenant.md](docs/compositions/tenant.md) |
+| `Tenant` | Cluster | One namespace per environment, staging and prod (quota, limits, RBAC, default-deny network) + optional isolated OpenBao namespace | [tenant.md](docs/compositions/tenant.md) |
 | `PostgresDatabase` | Namespaced | Logical database + role, connection details delivered as a Secret | [postgres-database.md](docs/compositions/postgres-database.md) |
 
 ## Design choices worth knowing
 
 - **Crossplane v2**: namespaced XRs and native Kubernetes resources composed directly, no `provider-kubernetes`.
 - **OpenBao instead of Vault**: real per-tenant Namespaces are free in OpenBao, Enterprise-only in Vault. Each tenant gets genuine isolation, not path prefixes on a shared mount.
-- **Optional features without duplicated Compositions**: the Vault add-on is toggled with `function-cel-filter`.
+- **Optional features without duplicated Compositions**: `Tenant` is one go-templating template; its environments are a loop and its Vault add-on an `if`.
 - **HTTPS on kind with Gateway API**: Envoy Gateway, cert-manager and a local CA generated once on the host, on `*.127.0.0.1.nip.io` hostnames that need no DNS setup.
 - **One source of truth**: `providers/` and `compositions/` are kustomize bases shared by the local flow and the Argo CD flow.
 
@@ -83,15 +83,17 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ Dedicated identities for agents (read-only, expiring), CI (GitHub Actions OIDC, no stored kubeconfig) and break-glass (one hour, audited); no long-lived tokens, no shared Argo CD admin ([#29](https://github.com/idPlatformKit/Orchestrator/issues/29), [docs/access.md](docs/access.md))
 - ✅ HTTPS entry point: Gateway API (Envoy Gateway), cert-manager with a local CA, `https://<name>.127.0.0.1.nip.io` for OpenBao and Argo CD, end-to-end tested in CI ([#27](https://github.com/idPlatformKit/Orchestrator/issues/27))
 - ✅ Tenant guardrails: Pod Security Admission (baseline) and Kyverno (resources required on workloads, every pod labelled with its owner team), end-to-end tested in CI ([#8](https://github.com/idPlatformKit/Orchestrator/issues/8), [docs/guardrails.md](docs/guardrails.md))
+- ✅ Staging and prod per tenant: a namespace per environment, read-only for the team in prod, Pod Security restricted, images by digest and at least 2 replicas in prod, separate OpenBao secrets, end-to-end tested in CI ([#63](https://github.com/idPlatformKit/Orchestrator/issues/63), [docs/environments.md](docs/environments.md))
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
 ## Roadmap
 
-1. **"New app" golden path**: from a form to a running app in a tenant, wired to its database and secrets ([#24](https://github.com/idPlatformKit/Orchestrator/issues/24)).
+1. **"New app" golden path**: the app describes itself in an `app.yaml` (its components and the services it needs), which is the spec of an `App` platform API; a form creates its repository, `idpk dev` runs it locally, and it's deployed to staging, then promoted to prod ([#24](https://github.com/idPlatformKit/Orchestrator/issues/24)).
 2. **Per-tenant observability**: a Grafana dashboard for each tenant ([#25](https://github.com/idPlatformKit/Orchestrator/issues/25)).
+3. **App services**: what apps need beyond Postgres, each as a platform API on the `PostgresDatabase` model: cache (Valkey), message queues (RabbitMQ), event streaming (Kafka), vector search (pgvector), a document database, object storage, search ([#56](https://github.com/idPlatformKit/Orchestrator/issues/56)).
 
-Beyond that, the longer-term roadmap runs from Milestone 4 to 13: HTTPS and certificates on kind (done), SSO with Dex, day-2 lifecycle and governance, the composition library as a product, developer experience, agentic development, tenancy tiers and multi-cluster, prod-like services, a cloud target, and AI platform services. Each milestone is a [`roadmap` issue](https://github.com/idPlatformKit/Orchestrator/issues?q=is%3Aissue%20label%3Aroadmap%20is%3Aopen), prefixed `[M4]` to `[M13]`.
+Beyond that, the longer-term roadmap runs from Milestone 6 to 13: day-2 lifecycle and governance, the composition library as a product, developer experience, agentic development, tenancy tiers and multi-cluster, prod-like services, a cloud target, and AI platform services. Each milestone is a [`roadmap` issue](https://github.com/idPlatformKit/Orchestrator/issues?q=is%3Aissue%20label%3Aroadmap%20is%3Aopen), prefixed `[Services]` or `[M6]` to `[M13]`.
 
 Follow progress in the [issues](https://github.com/idPlatformKit/Orchestrator/issues).
 

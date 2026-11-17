@@ -8,519 +8,410 @@ spec:
     kind: Tenant
   mode: Pipeline
   pipeline:
+    # One set of resources per environment, so a template rather than
+    # patch-and-transform, which can't loop over spec.environments.
     - step: compose
       functionRef:
-        name: function-patch-and-transform
+        name: function-go-templating
       input:
-        apiVersion: pt.fn.crossplane.io/v1beta1
-        kind: Resources
-        resources:
-          # --- always-on baseline ---
-          - name: namespace
-            base:
-              apiVersion: v1
-              kind: Namespace
-              metadata:
-                labels:
-                  # Pod Security Admission (built into Kubernetes): refuse
-                  # pods below the "baseline" Pod Security Standard
-                  # (privileged, host namespaces, hostPath...).
-                  pod-security.kubernetes.io/enforce: baseline
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              # What the guardrails (platform/policies/) select tenant
-              # namespaces on, and the team every workload is labelled with.
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.labels[platform.idplatformkit.io/tenant]
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.ownerGroup
-                toFieldPath: metadata.labels[platform.idplatformkit.io/owner]
-            # Plain native resources have no Ready status condition to wait
-            # on -- consider them ready as soon as they're created.
-            readinessChecks:
-              - type: None
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $tenant := $xr.metadata.name }}
+            {{- $owner := $xr.spec.ownerGroup }}
+            {{- $vault := and $xr.spec.vault $xr.spec.vault.enabled }}
+            {{- /* Composed resources that already exist, by name. */}}
+            {{- $observed := .observed.resources | default dict }}
+            {{- /*
+              What each environment changes (docs/environments.md):
+              - pss: the Pod Security Standard Pod Security Admission
+                enforces on the namespace;
+              - role: what the owner team gets in the namespace. In prod
+                everything goes through GitOps: read-only, and break-glass
+                to intervene.
+            */}}
+            {{- $rules := dict
+                  "staging" (dict "pss" "baseline" "role" "edit")
+                  "prod" (dict "pss" "restricted" "role" "view") }}
 
-          - name: resourcequota
-            base:
-              apiVersion: v1
-              kind: ResourceQuota
-              spec:
-                hard:
-                  requests.cpu: "4"
-                  requests.memory: 8Gi
-                  limits.cpu: "8"
-                  limits.memory: 16Gi
-                  pods: "20"
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-            readinessChecks:
-              - type: None
+            {{- range $env := $xr.spec.environments }}
+            {{- $ns := printf "%s-%s" $tenant $env }}
+            {{- $rule := get $rules $env }}
+            ---
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: {{ $ns }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "namespace-%s" $env) }}
+                # Plain native resources have no Ready condition to wait on:
+                # ready once they exist. Not before: the sequencer below
+                # would let what lives in the namespace go first.
+                {{- if hasKey $observed (printf "namespace-%s" $env) }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+              labels:
+                # Pod Security Admission (built into Kubernetes) refuses pods
+                # below this Pod Security Standard.
+                pod-security.kubernetes.io/enforce: {{ get $rule "pss" }}
+                # Warnings against "restricted" everywhere: Pod Security
+                # Admission only enforces on pods, so this is what tells a
+                # Deployment's author, at apply time, that its pods won't
+                # start in prod.
+                pod-security.kubernetes.io/warn: restricted
+                # What the guardrails (platform/policies/) select on, and the
+                # team every workload is labelled with.
+                platform.idplatformkit.io/tenant: {{ $tenant }}
+                platform.idplatformkit.io/environment: {{ $env }}
+                platform.idplatformkit.io/owner: {{ $owner }}
+            ---
+            apiVersion: v1
+            kind: ResourceQuota
+            metadata:
+              name: {{ $tenant }}
+              namespace: {{ $ns }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "resourcequota-%s" $env) }}
+                {{- if hasKey $observed (printf "resourcequota-%s" $env) }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+            spec:
+              hard:
+                requests.cpu: "4"
+                requests.memory: 8Gi
+                limits.cpu: "8"
+                limits.memory: 16Gi
+                pods: "20"
+            ---
+            apiVersion: v1
+            kind: LimitRange
+            metadata:
+              name: {{ $tenant }}
+              namespace: {{ $ns }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "limitrange-%s" $env) }}
+                {{- if hasKey $observed (printf "limitrange-%s" $env) }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+            spec:
+              limits:
+                - type: Container
+                  default:
+                    cpu: 500m
+                    memory: 512Mi
+                  defaultRequest:
+                    cpu: 100m
+                    memory: 128Mi
+            ---
+            apiVersion: rbac.authorization.k8s.io/v1
+            kind: RoleBinding
+            metadata:
+              name: {{ $tenant }}
+              namespace: {{ $ns }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "rolebinding-%s" $env) }}
+                {{- if hasKey $observed (printf "rolebinding-%s" $env) }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: ClusterRole
+              name: {{ get $rule "role" }}
+            subjects:
+              - apiGroup: rbac.authorization.k8s.io
+                kind: Group
+                name: {{ $owner }}
+            ---
+            apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: {{ $tenant }}
+              namespace: {{ $ns }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "networkpolicy-%s" $env) }}
+                {{- if hasKey $observed (printf "networkpolicy-%s" $env) }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+            spec:
+              podSelector: {}
+              policyTypes:
+                - Ingress
+              ingress:
+                # Only from other pods of the same namespace: staging can't
+                # reach prod, nor another tenant.
+                - from:
+                    - podSelector: {}
+            {{- end }}
 
-          - name: limitrange
-            base:
-              apiVersion: v1
-              kind: LimitRange
-              spec:
-                limits:
-                  - type: Container
-                    default:
-                      cpu: "500m"
-                      memory: 512Mi
-                    defaultRequest:
-                      cpu: "100m"
-                      memory: 128Mi
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-            readinessChecks:
-              - type: None
+            {{- if $vault }}
+            {{- $sa := $xr.spec.vault.serviceAccountName }}
+            {{- /*
+              OpenBao: a real OpenBao namespace per tenant (Vault gates
+              namespaces behind Enterprise), with one KV v2 mount per
+              environment. Every OpenBao object is a managed resource kept
+              in the idpk-tenants namespace, out of the teams' reach.
+            */}}
+            ---
+            apiVersion: vault.vault.m.upbound.io/v1alpha1
+            kind: VaultNamespace
+            metadata:
+              name: {{ $tenant }}
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation "vault-namespace" }}
+            spec:
+              forProvider:
+                path: {{ $tenant }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
+            {{- /*
+              The Kubernetes auth method, inside the tenant's OpenBao
+              namespace. managementPolicies excludes Delete on everything
+              inside that namespace: deleting the VaultNamespace already
+              wipes its content, and a child deleting itself afterwards gets
+              a 404 the provider retries forever (docs/compositions/tenant.md).
+            */}}
+            ---
+            apiVersion: auth.vault.m.upbound.io/v1alpha1
+            kind: Backend
+            metadata:
+              name: {{ $tenant }}
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation "vault-k8s-auth-backend" }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                type: kubernetes
+                path: kubernetes
+                namespace: {{ $tenant }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
+            ---
+            apiVersion: kubernetes.vault.m.upbound.io/v1alpha1
+            kind: AuthBackendConfig
+            metadata:
+              name: {{ $tenant }}
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation "vault-k8s-auth-config" }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                backend: kubernetes
+                kubernetesHost: https://kubernetes.default.svc
+                namespace: {{ $tenant }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
 
-          - name: rolebinding
-            base:
-              apiVersion: rbac.authorization.k8s.io/v1
-              kind: RoleBinding
-              roleRef:
-                apiGroup: rbac.authorization.k8s.io
-                kind: ClusterRole
-                name: edit
-              subjects:
-                - apiGroup: rbac.authorization.k8s.io
-                  kind: Group
-                  name: placeholder
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.ownerGroup
-                toFieldPath: subjects[0].name
-            readinessChecks:
-              - type: None
+            {{- range $env := $xr.spec.environments }}
+            {{- $ns := printf "%s-%s" $tenant $env }}
+            {{- /* The environment's secrets: a mount, a policy on it, and a
+                   Kubernetes auth role bound to one ServiceAccount of the
+                   environment's namespace. Staging can't read prod. */}}
+            ---
+            apiVersion: vault.vault.m.upbound.io/v1alpha1
+            kind: Mount
+            metadata:
+              name: {{ $ns }}
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation (printf "vault-mount-%s" $env) }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                namespace: {{ $tenant }}
+                path: {{ $env }}
+                type: kv-v2
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
+            ---
+            apiVersion: vault.vault.m.upbound.io/v1alpha1
+            kind: Policy
+            metadata:
+              name: {{ $ns }}
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation (printf "vault-policy-%s" $env) }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                namespace: {{ $tenant }}
+                name: {{ $env }}
+                policy: |
+                  path "{{ $env }}/data/*" {
+                    capabilities = ["create", "read", "update", "delete", "list"]
+                  }
+                  path "{{ $env }}/metadata/*" {
+                    capabilities = ["list", "read", "delete"]
+                  }
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
+            ---
+            apiVersion: kubernetes.vault.m.upbound.io/v1alpha1
+            kind: AuthBackendRole
+            metadata:
+              name: {{ $ns }}
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation (printf "vault-k8s-role-%s" $env) }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                backend: kubernetes
+                roleName: {{ $env }}
+                tokenPolicies:
+                  - {{ $env }}
+                tokenTtl: 3600
+                boundServiceAccountNames:
+                  - {{ $sa }}
+                boundServiceAccountNamespaces:
+                  - {{ $ns }}
+                namespace: {{ $tenant }}
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
+            ---
+            apiVersion: v1
+            kind: ServiceAccount
+            metadata:
+              name: {{ $sa }}
+              namespace: {{ $ns }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "vault-serviceaccount-%s" $env) }}
+                {{- if hasKey $observed (printf "vault-serviceaccount-%s" $env) }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+            {{- /* Teams declare ExternalSecrets against this store to get
+                   the environment's secrets as Kubernetes Secrets. ESO
+                   validates it against OpenBao and reports Ready. */}}
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: SecretStore
+            metadata:
+              name: openbao
+              namespace: {{ $ns }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "vault-secretstore-%s" $env) }}
+            spec:
+              provider:
+                vault:
+                  server: http://openbao.openbao-system.svc.cluster.local:8200
+                  namespace: {{ $tenant }}
+                  path: {{ $env }}
+                  version: v2
+                  auth:
+                    kubernetes:
+                      mountPath: kubernetes
+                      role: {{ $env }}
+                      serviceAccountRef:
+                        name: {{ $sa }}
+            {{- end }}
 
-          - name: networkpolicy
-            base:
-              apiVersion: networking.k8s.io/v1
-              kind: NetworkPolicy
-              spec:
-                podSelector: {}
-                policyTypes:
-                  - Ingress
-                ingress:
-                  # Allow traffic only from other pods in the same namespace.
-                  - from:
-                      - podSelector: {}
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-            readinessChecks:
-              - type: None
+            {{- /*
+              People: the owner team reads and writes the secrets of every
+              environment in OpenBao's UI or CLI, signed in with GitHub through
+              Dex (the oidc auth method, platform/openbao-sso/), with the role
+              tenant-<name>. Both objects live in OpenBao's root namespace,
+              where that auth method is: the policy reaches the tenant's
+              namespace through its path prefix (<name>/<env>/...), and
+              nothing else. Secrets aren't in Git, so the team writes prod's
+              too.
+            */}}
+            ---
+            apiVersion: vault.vault.m.upbound.io/v1alpha1
+            kind: Policy
+            metadata:
+              name: {{ $tenant }}-team
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation "vault-oidc-policy" }}
+            spec:
+              forProvider:
+                name: tenant-{{ $tenant }}
+                policy: |
+                  {{- range $env := $xr.spec.environments }}
+                  path "{{ $tenant }}/{{ $env }}/*" {
+                    capabilities = ["create", "read", "update", "patch", "delete", "list"]
+                  }
+                  {{- end }}
+                  # The UI lists the namespace's mounts to show them.
+                  path "{{ $tenant }}/sys/internal/ui/mounts" {
+                    capabilities = ["read"]
+                  }
+                  path "{{ $tenant }}/sys/internal/ui/mounts/*" {
+                    capabilities = ["read"]
+                  }
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
+            {{- /* Dex sends teams as "<org>:<team>", only for the
+                   installation's org: the glob matches the owner team
+                   without naming the org, like the RoleBindings. */}}
+            ---
+            apiVersion: jwt.vault.m.upbound.io/v1alpha1
+            kind: AuthBackendRole
+            metadata:
+              name: {{ $tenant }}-team
+              namespace: idpk-tenants
+              annotations:
+                {{ setResourceNameAnnotation "vault-oidc-role" }}
+            spec:
+              forProvider:
+                backend: oidc
+                roleName: tenant-{{ $tenant }}
+                roleType: oidc
+                userClaim: preferred_username
+                groupsClaim: groups
+                oidcScopes: [profile, email, groups]
+                boundClaimsType: glob
+                boundClaims:
+                  groups: "*:{{ $owner }}"
+                allowedRedirectUris:
+                  - https://openbao.127.0.0.1.nip.io/ui/vault/auth/oidc/oidc/callback
+                  - http://localhost:8250/oidc/callback
+                tokenPolicies:
+                  - tenant-{{ $tenant }}
+                tokenTtl: 3600
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: vault-local
+            {{- end }}
 
-          # --- optional add-on, kept or dropped by the cel-filter step below ---
-          # A real Vault namespace per tenant (OpenBao ships this free; Vault
-          # gates it behind Enterprise) -- the actual isolation boundary,
-          # not a shared mount with per-tenant path prefixes.
-          - name: vault-namespace
-            base:
-              apiVersion: vault.vault.m.upbound.io/v1alpha1
-              kind: VaultNamespace
-              spec:
-                forProvider:
-                  path: placeholder
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.path
-
-          # A kv-v2 mount inside (not shared across) the tenant's namespace.
-          # managementPolicies excludes "Delete" -- deleting the parent
-          # vault-namespace above already recursively wipes everything
-          # inside it in Vault; if this tries to delete itself independently
-          # (e.g. the toggle flips off while the namespace is also going
-          # away, or after it's already gone) the call 404s ("namespace not
-          # found") and the provider doesn't treat that as success, so the
-          # resource gets stuck retrying forever. Skipping the Delete action
-          # avoids that ordering race -- the K8s object is just removed.
-          - name: vault-kv-mount
-            base:
-              apiVersion: vault.vault.m.upbound.io/v1alpha1
-              kind: Mount
-              spec:
-                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-                forProvider:
-                  namespace: placeholder
-                  path: secret
-                  type: kv-v2
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.namespace
-
-          # Full access to that mount -- no tenant-name prefix needed, the
-          # namespace itself is what scopes this. managementPolicies
-          # excludes "Delete" for the same reason as vault-kv-mount above.
-          - name: vault-policy
-            base:
-              apiVersion: vault.vault.m.upbound.io/v1alpha1
-              kind: Policy
-              spec:
-                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-                forProvider:
-                  namespace: placeholder
-                  name: tenant-access
-                  policy: |
-                    path "secret/data/*" {
-                      capabilities = ["create", "read", "update", "delete", "list"]
-                    }
-                    path "secret/metadata/*" {
-                      capabilities = ["list", "read", "delete"]
-                    }
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.namespace
-
-          # Kubernetes auth method, enabled inside the tenant's own Vault
-          # namespace (auth methods are namespace-scoped too). Lets one
-          # named ServiceAccount log in and receive the tenant's policy --
-          # the app team creates that ServiceAccount themselves; this only
-          # wires the trust relationship. managementPolicies excludes
-          # "Delete" for the same reason as vault-kv-mount/vault-policy.
-          - name: vault-k8s-auth-backend
-            base:
-              apiVersion: auth.vault.m.upbound.io/v1alpha1
-              kind: Backend
-              spec:
-                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-                forProvider:
-                  type: kubernetes
-                  path: kubernetes
-                  namespace: placeholder
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.namespace
-
-          - name: vault-k8s-auth-config
-            base:
-              apiVersion: kubernetes.vault.m.upbound.io/v1alpha1
-              kind: AuthBackendConfig
-              spec:
-                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-                forProvider:
-                  backend: kubernetes
-                  kubernetesHost: https://kubernetes.default.svc
-                  namespace: placeholder
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.namespace
-
-          - name: vault-k8s-auth-role
-            base:
-              apiVersion: kubernetes.vault.m.upbound.io/v1alpha1
-              kind: AuthBackendRole
-              spec:
-                managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-                forProvider:
-                  backend: kubernetes
-                  roleName: tenant-access
-                  tokenPolicies:
-                    - tenant-access
-                  tokenTtl: 3600
-                  boundServiceAccountNames:
-                    - placeholder
-                  boundServiceAccountNamespaces:
-                    - placeholder
-                  namespace: placeholder
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.boundServiceAccountNamespaces[0]
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.vault.serviceAccountName
-                toFieldPath: spec.forProvider.boundServiceAccountNames[0]
-
-          # The ServiceAccount bound to the tenant's Vault role. Created here
-          # so the SecretStore below can authenticate as soon as the Tenant
-          # is Ready; workloads that need the secrets run as it too.
-          - name: vault-serviceaccount
-            base:
-              apiVersion: v1
-              kind: ServiceAccount
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.vault.serviceAccountName
-                toFieldPath: metadata.name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-            readinessChecks:
-              - type: None
-
-          # External Secrets Operator store reading the tenant's own OpenBao
-          # namespace (KV v2 mount "secret") with the tenant's Kubernetes
-          # auth role. Teams declare ExternalSecrets against it to get
-          # Kubernetes Secrets. Same identity and policy as a pod logging in
-          # directly, so nothing broader is granted.
-          - name: vault-secretstore
-            base:
-              apiVersion: external-secrets.io/v1
-              kind: SecretStore
-              metadata:
-                name: openbao
-              spec:
-                provider:
-                  vault:
-                    server: http://openbao.openbao-system.svc.cluster.local:8200
-                    namespace: placeholder
-                    path: secret
-                    version: v2
-                    auth:
-                      kubernetes:
-                        mountPath: kubernetes
-                        role: tenant-access
-                        serviceAccountRef:
-                          name: placeholder
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.provider.vault.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.vault.serviceAccountName
-                toFieldPath: spec.provider.vault.auth.kubernetes.serviceAccountRef.name
-            # ESO validates the store against OpenBao and reports Ready.
-            readinessChecks:
-              - type: MatchCondition
-                matchCondition:
-                  type: Ready
-                  status: "True"
-
-          # People: the team owning the tenant reads and writes its secrets
-          # in OpenBao's UI or CLI, signed in with GitHub through Dex (the
-          # oidc auth method, platform/openbao-sso/), with the role
-          # tenant-<name>. Both objects live in OpenBao's ROOT namespace,
-          # where that auth method is: a root-namespace policy reaches the
-          # tenant's namespace through its path prefix (<name>/secret/...),
-          # and nothing else. Deleted with the Tenant.
-          - name: vault-oidc-policy
-            base:
-              apiVersion: vault.vault.m.upbound.io/v1alpha1
-              kind: Policy
-              spec:
-                forProvider:
-                  name: placeholder
-                  policy: placeholder
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "%s-team"
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.name
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "tenant-%s"
-              - type: CombineFromComposite
-                combine:
-                  variables:
-                    - fromFieldPath: metadata.name
-                    - fromFieldPath: metadata.name
-                    - fromFieldPath: metadata.name
-                  strategy: string
-                  string:
-                    fmt: |
-                      path "%s/secret/*" {
-                        capabilities = ["create", "read", "update", "patch", "delete", "list"]
-                      }
-                      # The UI lists the namespace's mounts to show them.
-                      path "%s/sys/internal/ui/mounts" {
-                        capabilities = ["read"]
-                      }
-                      path "%s/sys/internal/ui/mounts/*" {
-                        capabilities = ["read"]
-                      }
-                toFieldPath: spec.forProvider.policy
-
-          # Dex sends teams as "<org>:<team>", only for the installation's
-          # org: the glob matches the owner team without naming the org, like
-          # the namespace's RoleBinding.
-          - name: vault-oidc-role
-            base:
-              apiVersion: jwt.vault.m.upbound.io/v1alpha1
-              kind: AuthBackendRole
-              spec:
-                forProvider:
-                  backend: oidc
-                  roleName: placeholder
-                  roleType: oidc
-                  userClaim: preferred_username
-                  groupsClaim: groups
-                  oidcScopes: [profile, email, groups]
-                  boundClaimsType: glob
-                  boundClaims:
-                    groups: placeholder
-                  allowedRedirectUris:
-                    - https://openbao.127.0.0.1.nip.io/ui/vault/auth/oidc/oidc/callback
-                    - http://localhost:8250/oidc/callback
-                  tokenPolicies:
-                    - placeholder
-                  tokenTtl: 3600
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: vault-local
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.name
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "%s-team"
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.namespace
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.roleName
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "tenant-%s"
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.ownerGroup
-                toFieldPath: spec.forProvider.boundClaims.groups
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "*:%s"
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.tokenPolicies[0]
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "tenant-%s"
-
-    - step: filter-optional
-      functionRef:
-        name: function-cel-filter
-      input:
-        apiVersion: cel.fn.crossplane.io/v1beta1
-        kind: Filters
-        filters:
-          - name: vault-.*
-            expression: >-
-              has(observed.composite.resource.spec.vault) &&
-              observed.composite.resource.spec.vault.enabled
-
+    # Managed resources (OpenBao) and the SecretStore are ready when their
+    # Ready condition says so.
     - step: ready
       functionRef:
         name: function-auto-ready
 
     # Create resources in dependency order instead of all at once. Without
-    # this, every namespaced resource first failed with `namespaces "<tenant>"
-    # not found` and Crossplane backed off for ~90s before retrying; then the
-    # Vault children failed with OpenBao's own `namespace not found` (404)
-    # until the VaultNamespace existed, and provider-vault backed off again.
-    # A Tenant took ~3 minutes to become Ready (see docs/compositions/tenant.md).
-    # Last in the pipeline so that resetCompositeReadiness has the final say:
-    # the Tenant can't report Ready while some resources are still held back.
+    # this, every namespaced resource first failed with `namespaces "<ns>" not
+    # found` and Crossplane backed off for ~90s; then the OpenBao children
+    # failed with OpenBao's own `namespace not found` (404) until the
+    # VaultNamespace existed. A Tenant took ~3 minutes to become Ready (see
+    # docs/compositions/tenant.md). Last in the pipeline so that
+    # resetCompositeReadiness has the final say: the Tenant can't report
+    # Ready while some resources are still held back.
+    #
+    # cacheTTL: the function's response is valid that long, and Crossplane
+    # reconciles the Tenant again after it. With the default (1 minute), a
+    # Tenant waited for that next pass at every held-back step and took
+    # about 60s to become Ready; 64s measured with the previous
+    # patch-and-transform composition too. With 5s: 13s. The cost is a
+    # reconcile of each Tenant every 5 seconds.
+    #
+    # One rule per prerequisite, and per environment: a group of
+    # alternatives in first position didn't hold resources back. A rule
+    # naming an environment the tenant doesn't have holds nothing back,
+    # since none of its resources exist.
     - step: sequence
       functionRef:
         name: function-sequencer
@@ -528,43 +419,50 @@ spec:
         apiVersion: sequencer.fn.crossplane.io/v1beta1
         kind: Input
         resetCompositeReadiness: true
+        cacheTTL: 5s
         rules:
           - sequence:
-              - namespace
-              - (resourcequota|limitrange|rolebinding|networkpolicy|vault-namespace)
+              - namespace-staging
+              - (resourcequota|limitrange|rolebinding|networkpolicy|vault-serviceaccount)-staging
+          - sequence:
+              - namespace-prod
+              - (resourcequota|limitrange|rolebinding|networkpolicy|vault-serviceaccount)-prod
           - sequence:
               - vault-namespace
-              - (vault-kv-mount|vault-policy|vault-k8s-auth-backend)
+              - (vault-k8s-auth-backend|vault-mount-.*|vault-policy-.*)
           - sequence:
               - vault-k8s-auth-backend
-              - (vault-k8s-auth-config|vault-k8s-auth-role)
-          - sequence:
-              - namespace
-              - vault-serviceaccount
-          # The store can only validate once the role it logs in with, the
-          # policy and the mount it reads, and its ServiceAccount all exist.
-          # One rule per prerequisite: a group of alternatives in first
-          # position didn't hold the store back (it was created before the
-          # role and failed validation three times).
-          - sequence:
-              - vault-k8s-auth-role
-              - vault-secretstore
+              - (vault-k8s-auth-config|vault-k8s-role-.*)
+          # A store can only validate once the role it logs in with, the
+          # policy and the mount it reads, and its ServiceAccount exist.
           - sequence:
               - vault-k8s-auth-config
-              - vault-secretstore
+              - vault-secretstore-.*
           - sequence:
-              - vault-policy
-              - vault-secretstore
+              - vault-k8s-role-staging
+              - vault-secretstore-staging
           - sequence:
-              - vault-kv-mount
-              - vault-secretstore
+              - vault-policy-staging
+              - vault-secretstore-staging
           - sequence:
-              - vault-serviceaccount
-              - vault-secretstore
+              - vault-mount-staging
+              - vault-secretstore-staging
+          - sequence:
+              - vault-serviceaccount-staging
+              - vault-secretstore-staging
+          - sequence:
+              - vault-k8s-role-prod
+              - vault-secretstore-prod
+          - sequence:
+              - vault-policy-prod
+              - vault-secretstore-prod
+          - sequence:
+              - vault-mount-prod
+              - vault-secretstore-prod
+          - sequence:
+              - vault-serviceaccount-prod
+              - vault-secretstore-prod
           # The team's OIDC role grants the team's policy: policy first.
-          - sequence:
-              - namespace
-              - vault-oidc-policy
           - sequence:
               - vault-oidc-policy
               - vault-oidc-role

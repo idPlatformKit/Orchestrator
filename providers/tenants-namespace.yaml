@@ -1,0 +1,8 @@
+# Where the Tenant composition keeps each tenant's OpenBao objects (its
+# namespace, mounts, policies, auth roles), out of the tenant's own
+# namespaces: teams can't edit them, and deleting an environment's namespace
+# never waits on them. Platform admins only.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: idpk-tenants
