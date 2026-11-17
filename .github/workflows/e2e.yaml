@@ -66,6 +66,9 @@ jobs:
       - name: PostgresDatabase composition
         run: make try-postgres-database
 
+      - name: App composition (hello, staging then prod)
+        run: make try-app
+
       - name: Debug on failure
         if: failure()
         run: |
@@ -73,6 +76,7 @@ jobs:
           kubectl get composite,managed -A || true
           kubectl describe -f examples/tenant.yaml || true
           kubectl describe -f examples/postgres-database.yaml || true
+          kubectl describe apps.platform.idplatformkit.io -A || true
           kubectl get gatewayclass,gateway,httproute -A || true
           kubectl get certificate,clusterissuer -A || true
           kubectl describe pods -n backstage-system || true
@@ -117,6 +121,9 @@ jobs:
 
       - name: PostgresDatabase composition
         run: make try-postgres-database
+
+      - name: App composition (hello, staging then prod)
+        run: make try-app
 
       - name: Debug on failure
         if: failure()

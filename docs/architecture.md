@@ -126,8 +126,9 @@ The developer portal ([idPlatformKit/portal](https://github.com/idPlatformKit/po
 |---|---|---|
 | [`PostgresDatabase`](compositions/postgres-database.md) | Namespaced | A logical Postgres database + role, connection details in a Secret |
 | [`Tenant`](compositions/tenant.md) | Cluster | A namespace baseline (quota, RBAC, network policy) per environment, plus an optional, toggleable, genuinely-isolated OpenBao secrets space with one mount per environment |
+| [`App`](compositions/app.md) | Namespaced | An app of a tenant in one environment: a Deployment, Service and Gateway route per component, a `PostgresDatabase` per service, prod rules. Composed by `function-app`, a Go composition function in `functions/app` (first prototype) |
 
-Both follow the same shape: one shared backing service (Postgres / OpenBao) installed once at the platform level, and a Composition that provisions a caller-scoped slice of it (a database+role / a Vault namespace) rather than a dedicated instance per claim. That keeps local `kind` usage cheap and fast; it is a deliberate simplicity trade-off, not a scalability claim for a real multi-tenant production cluster.
+`PostgresDatabase` and `Tenant` follow the same shape: one shared backing service (Postgres / OpenBao) installed once at the platform level, and a Composition that provisions a caller-scoped slice of it (a database+role / a Vault namespace) rather than a dedicated instance per claim. That keeps local `kind` usage cheap and fast; it is a deliberate simplicity trade-off, not a scalability claim for a real multi-tenant production cluster. `App` sits one level up: it composes those platform APIs (a `PostgresDatabase` per service), not the backing services directly, so the service compositions keep deciding how each service is provided.
 
 ## Non-goals / current limitations
 

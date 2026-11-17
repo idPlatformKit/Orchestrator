@@ -1,11 +1,10 @@
 # The hello demo app (examples/app/hello) in the staging environment of the
-# demo-team tenant (make try-tenant creates it). `make try-app` builds its
-# image, loads it into kind and applies this.
+# demo-team tenant (make try-tenant creates it). `make try-app` deploys it to
+# staging, then promotes the same image, by digest, to demo-team-prod.
 #
 # In a real app, spec is the app's app.yaml, and its CI adds spec.images,
 # pinned by digest, then opens this as a pull request on the instances
-# repository. Here the image is a local build loaded into kind, by tag: fine
-# in staging, refused in prod.
+# repository. The image is published by the hello-image workflow.
 apiVersion: platform.idplatformkit.io/v1alpha1
 kind: App
 metadata:
@@ -13,7 +12,7 @@ metadata:
   namespace: demo-team-staging
 spec:
   images:
-    hello: idpk-hello:dev
+    hello: ghcr.io/idplatformkit/hello@sha256:023ab06341134d27cf0932fb1e1d8bfd548f03a9d4d908921112bad3b6314092
   services:
     db: { type: postgres }
   components:

@@ -56,6 +56,7 @@ make local-down              # clean up
 |---|---|---|---|
 | `Tenant` | Cluster | One namespace per environment, staging and prod (quota, limits, RBAC, default-deny network) + optional isolated OpenBao namespace | [tenant.md](docs/compositions/tenant.md) |
 | `PostgresDatabase` | Namespaced | Logical database + role, connection details delivered as a Secret | [postgres-database.md](docs/compositions/postgres-database.md) |
+| `App` | Namespaced | An app's components and the services they use: Deployments, Services, a route on the Gateway, its databases, with each environment's rules. Composed by a Go function (`functions/app`). First prototype | [app.md](docs/compositions/app.md) |
 
 ## Design choices worth knowing
 
@@ -84,6 +85,7 @@ Full rationale in [docs/architecture.md](docs/architecture.md).
 - ✅ HTTPS entry point: Gateway API (Envoy Gateway), cert-manager with a local CA, `https://<name>.127.0.0.1.nip.io` for OpenBao and Argo CD, end-to-end tested in CI ([#27](https://github.com/idPlatformKit/Orchestrator/issues/27))
 - ✅ Tenant guardrails: Pod Security Admission (baseline) and Kyverno (resources required on workloads, every pod labelled with its owner team), end-to-end tested in CI ([#8](https://github.com/idPlatformKit/Orchestrator/issues/8), [docs/guardrails.md](docs/guardrails.md))
 - ✅ Staging and prod per tenant: a namespace per environment, read-only for the team in prod, Pod Security restricted, images by digest and at least 2 replicas in prod, separate OpenBao secrets, end-to-end tested in CI ([#63](https://github.com/idPlatformKit/Orchestrator/issues/63), [docs/environments.md](docs/environments.md))
+- ✅ `App` platform API, first prototype: an app's components and its Postgres database from one spec, env values referencing the database's outputs, deployed to staging then promoted by digest to prod (2 replicas, PodDisruptionBudget), reached over HTTPS. Composed by a Go composition function with unit tests. End-to-end tested on kind ([#24](https://github.com/idPlatformKit/Orchestrator/issues/24), [docs/compositions/app.md](docs/compositions/app.md))
 
 Backing services (Postgres, OpenBao) run in single-replica dev mode with fixed local credentials. **This is a reference implementation, not production-ready.**
 
