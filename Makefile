@@ -54,7 +54,7 @@ GITOPS_REVISION ?= main
 	external-secrets-install external-secrets-uninstall \
 	local-ca local-ca-secret local-ca-trust local-ca-untrust \
 	cert-manager-install envoy-gateway-install gateway-apply try-gateway try-ci-identity \
-	function-app-test render-app try-app
+	function-app-test render-app try-app try-app-protection
 
 # --- Guided install (see docs/install.md) ---
 
@@ -543,6 +543,11 @@ render-app:
 
 try-app:
 	./scripts/try-app.sh
+
+# After try-app: a removed service is kept until confirmed, and the App can't
+# be deleted until its services are. Deletes hello in staging at the end.
+try-app-protection:
+	./scripts/try-app-protection.sh
 
 # Read-only ServiceAccount for the portal's Kubernetes plugin
 # (platform/backstage-reader/). The GitOps flow installs it with Argo CD.

@@ -5,9 +5,13 @@
 # makes it a deliberate, reviewed change (one pull request adds the
 # annotation, the next removes the App), not a side effect of a removed file
 # and Argo CD's pruning. Removing a service from an App is protected by the
-# App's function the same way. Deleting the whole namespace (removing the
-# tenant or one of its environments) is allowed: that's already explicit.
-# See docs/compositions/app.md.
+# App's function the same way.
+#
+# This holds when the App's namespace is being deleted too (its tenant, or
+# one of its environments, removed): the namespace then waits, with this
+# message, until the Apps' services are confirmed. Confirm and delete the
+# Apps before the tenant: their databases' managed resources can't be
+# deleted from a terminating namespace (#14). See docs/compositions/app.md.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -40,9 +44,7 @@ spec:
         '*' in variables.confirmed ? [] :
         variables.services.filter(s, !(s in variables.confirmed))
   validations:
-    - expression: >-
-        size(variables.unconfirmed) == 0 ||
-        (has(namespaceObject.metadata.deletionTimestamp))
+    - expression: size(variables.unconfirmed) == 0
       messageExpression: >-
         'Deleting App ' + oldObject.metadata.name + ' would delete the data of its services (' +
         variables.unconfirmed.join(', ') + '): confirm it first with the annotation ' +
