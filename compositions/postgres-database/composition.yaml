@@ -90,6 +90,46 @@ spec:
                       type: Format
                       fmt: "%s-password"
 
+          # The role reads its password to connect, deletion included: the
+          # ExternalSecret, and the Secret it owns, must outlive it. Without
+          # this, they were deleted first, and the role stayed stuck on
+          # "cannot get password secret". Crossplane refuses to delete the
+          # ExternalSecret while the role exists.
+          - name: password-usage
+            base:
+              apiVersion: protection.crossplane.io/v1beta1
+              kind: Usage
+              spec:
+                replayDeletion: true
+                of:
+                  apiVersion: external-secrets.io/v1
+                  kind: ExternalSecret
+                  resourceRef: {}
+                by:
+                  apiVersion: postgresql.sql.m.crossplane.io/v1alpha1
+                  kind: Role
+                  resourceRef: {}
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.of.resourceRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.by.resourceRef.name
+
           # The app role, with the password above. provider-sql writes the
           # connection details to writeConnectionSecretToRef.
           - name: role
