@@ -124,6 +124,7 @@ providers-apply:
 		-f providers/function-app.yaml \
 		-f providers/tenant-native-resources-rbac.yaml \
 		-f providers/app-native-resources-rbac.yaml \
+		-f providers/postgres-database-rbac.yaml \
 		-f providers/tenants-namespace.yaml
 	kubectl wait --for=condition=Healthy --timeout=180s \
 		provider.pkg.crossplane.io/provider-sql \

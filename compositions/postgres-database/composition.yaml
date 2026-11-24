@@ -20,8 +20,78 @@ spec:
               fromFieldPath: spec.writeConnectionSecretToRef.name
               toFieldPath: name
         resources:
-          # The app role. provider-sql auto-generates its password and
-          # writes it to writeConnectionSecretToRef; we never see or set it.
+          # The role's password, generated once in the namespace by External
+          # Secrets Operator: nobody sees or sets it. An explicit password
+          # (passwordSecretRef) rather than provider-sql's own: provider-sql
+          # sets the role's password again whenever it differs from the one
+          # it published, so a retained role adopted again by a re-created
+          # PostgresDatabase gets working credentials. With a generated one,
+          # the adopted role's first update rotated the password, then
+          # failed before publishing it, and never rotated it again: the
+          # connection Secret had no password (docs/compositions/app.md).
+          - name: password-generator
+            base:
+              apiVersion: generators.external-secrets.io/v1alpha1
+              kind: Password
+              spec:
+                # Letters and digits only: safe in a connection URL.
+                length: 32
+                digits: 8
+                symbols: 0
+                allowRepeat: true
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+            # A generator has no status.
+            readinessChecks:
+              - type: None
+          - name: password
+            base:
+              apiVersion: external-secrets.io/v1
+              kind: ExternalSecret
+              spec:
+                refreshPolicy: CreatedOnce
+                target:
+                  creationPolicy: Owner
+                dataFrom:
+                  - sourceRef:
+                      generatorRef:
+                        apiVersion: generators.external-secrets.io/v1alpha1
+                        kind: Password
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.target.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.dataFrom[0].sourceRef.generatorRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+
+          # The app role, with the password above. provider-sql writes the
+          # connection details to writeConnectionSecretToRef.
           - name: role
             base:
               apiVersion: postgresql.sql.m.crossplane.io/v1alpha1
@@ -30,6 +100,8 @@ spec:
                 forProvider:
                   privileges:
                     login: true
+                  passwordSecretRef:
+                    key: password
                 providerConfigRef:
                   kind: ClusterProviderConfig
                   name: postgres-local
@@ -46,6 +118,14 @@ spec:
                     map:
                       Retain: [Observe, Create, Update, LateInitialize]
                       Delete: ["*"]
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.passwordSecretRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
