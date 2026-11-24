@@ -6,4 +6,4 @@ kind: Function
 metadata:
   name: function-app
 spec:
-  package: ghcr.io/idplatformkit/function-app:sha-301280d
+  package: ghcr.io/idplatformkit/function-app:sha-b5848b6
