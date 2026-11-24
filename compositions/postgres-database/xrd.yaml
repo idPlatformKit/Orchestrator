@@ -30,5 +30,25 @@ spec:
                       type: string
                   required:
                     - name
+                deletionPolicy:
+                  type: string
+                  description: >-
+                    What happens to the database in Postgres when this
+                    object is deleted, by itself or with its namespace.
+                    Retain (the default) keeps it, with its data and its
+                    role: re-creating a PostgresDatabase with the same name
+                    in the same namespace adopts it again. Delete drops it.
+                  enum: [Retain, Delete]
+                  default: Retain
               required:
                 - writeConnectionSecretToRef
+            status:
+              type: object
+              properties:
+                databaseManagementPolicies:
+                  type: array
+                  description: >-
+                    The management policies of the database's object: Delete
+                    has reached it when this is ["*"].
+                  items:
+                    type: string

@@ -382,9 +382,26 @@ func TestRetainedServices(t *testing.T) {
 		}
 	})
 
-	t.Run("AConfirmedServiceIsDeleted", func(t *testing.T) {
+	t.Run("AConfirmedServiceIsDeletedOnceDeleteReachedItsData", func(t *testing.T) {
 		for _, a := range []string{"cache-db", " other , cache-db ", "*"} {
+			// First, Delete hasn't reached the database's object yet: the
+			// service is kept, now with deletionPolicy Delete.
 			c, err := Compose("orders", "shop-staging", staging, spec(), ParseDeleteServices(a), observed(o))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, ok := c.Resources["postgres-cache-db"]
+			if !ok {
+				t.Fatalf("annotation %q: postgres-cache-db was deleted before Delete reached its data: it would be orphaned", a)
+			}
+			if p, _, _ := unstructured.NestedString(r.Resource.Object, "spec", "deletionPolicy"); p != "Delete" {
+				t.Errorf("annotation %q: deletionPolicy %q, want Delete", a, p)
+			}
+
+			// Then it has: the service is deleted.
+			o2 := readyDB()
+			o2["postgres-cache-db"] = map[string]any{"status": map[string]any{"databaseManagementPolicies": []any{"*"}}}
+			c, err = Compose("orders", "shop-staging", staging, spec(), ParseDeleteServices(a), observed(o2))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -393,6 +410,19 @@ func TestRetainedServices(t *testing.T) {
 			}
 			if _, ok := c.Status["retainedServices"]; ok {
 				t.Errorf("annotation %q: retainedServices is still set", a)
+			}
+		}
+	})
+
+	t.Run("ServicesKeepTheirDataUnlessConfirmed", func(t *testing.T) {
+		for a, want := range map[string]string{"": "Retain", "other": "Retain", "db": "Delete", "*": "Delete"} {
+			c, err := Compose("orders", "shop-staging", staging, spec(), ParseDeleteServices(a), observed(readyDB()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, _, _ := unstructured.NestedString(c.Resources["postgres-db"].Resource.Object, "spec", "deletionPolicy")
+			if p != want {
+				t.Errorf("annotation %q: deletionPolicy %q, want %q", a, p, want)
 			}
 		}
 	})

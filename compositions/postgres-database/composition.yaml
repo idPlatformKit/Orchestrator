@@ -34,6 +34,18 @@ spec:
                   kind: ClusterProviderConfig
                   name: postgres-local
             patches:
+              # Retain (the default) leaves out Delete: deleting this object,
+              # its PostgresDatabase or its namespace leaves the database in
+              # Postgres, without connecting to it (no #14 hang), and
+              # re-creating it under the same name adopts it again.
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.deletionPolicy
+                toFieldPath: spec.managementPolicies
+                transforms:
+                  - type: map
+                    map:
+                      Retain: [Observe, Create, Update, LateInitialize]
+                      Delete: ["*"]
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
@@ -87,6 +99,18 @@ spec:
                   kind: ClusterProviderConfig
                   name: postgres-local
             patches:
+              # Retain (the default) leaves out Delete: deleting this object,
+              # its PostgresDatabase or its namespace leaves the database in
+              # Postgres, without connecting to it (no #14 hang), and
+              # re-creating it under the same name adopts it again.
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.deletionPolicy
+                toFieldPath: spec.managementPolicies
+                transforms:
+                  - type: map
+                    map:
+                      Retain: [Observe, Create, Update, LateInitialize]
+                      Delete: ["*"]
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
@@ -116,6 +140,11 @@ spec:
                   string:
                     fmt: "%s_%s"
                 toFieldPath: spec.forProvider.owner
+              # What the database's object actually allows, for callers that
+              # wait for Delete before deleting it (the App function).
+              - type: ToCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: status.databaseManagementPolicies
             connectionDetails:
               - name: dbname
                 type: FromFieldPath

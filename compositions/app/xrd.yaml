@@ -24,7 +24,8 @@ spec:
             app.yaml of the app's repository, plus the images its CI built.
             Its services' data is protected: a service removed from the spec
             is kept, and the App can't be deleted, until the annotation
-            platform.idplatformkit.io/delete-services lists them (or is "*").
+            platform.idplatformkit.io/delete-services lists them (or is "*");
+            their data is only dropped once confirmed there.
             See docs/compositions/app.md.
           properties:
             spec:
