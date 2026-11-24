@@ -9,6 +9,7 @@ Every tenant namespace gets the same baseline rules, and prod namespaces stricte
 | Every pod carries the **team that owns the tenant**, `platform.idplatformkit.io/owner` | Kyverno `MutatingPolicy` `tenant-owner-label` (`platform/policies/owner-label.yaml`) | Set by the platform from the namespace, overwriting whatever the manifest says |
 | **Prod**: every image is **pinned by digest** (`image@sha256:...`), the one promoted from staging | Kyverno `ValidatingPolicy` `prod-images-by-digest` (`platform/policies/prod-images-by-digest.yaml`), on namespaces labelled `platform.idplatformkit.io/environment: prod` | Pods and workloads refused, with the containers to fix |
 | **Prod**: Deployments and StatefulSets run **at least 2 replicas** | Kyverno `ValidatingPolicy` `prod-min-replicas` (`platform/policies/prod-min-replicas.yaml`) | Refused. Scaling through the `scale` subresource (`kubectl scale`, an autoscaler) isn't checked |
+| An **`App` isn't deleted with its data** unless its services are confirmed in the annotation `platform.idplatformkit.io/delete-services` | Kyverno `ValidatingPolicy` `app-data-protection` (`platform/policies/app-data-protection.yaml`), on every namespace; Kyverno reads `App`s through `kyverno:read-platform-apps` | The deletion is refused, with the services to confirm. Allowed when the namespace itself is being deleted. See [compositions/app.md](compositions/app.md#protecting-the-data) |
 
 ## How it fits together
 

@@ -69,6 +69,9 @@ jobs:
       - name: App composition (hello, staging then prod)
         run: make try-app
 
+      - name: App data protection (removed service, App deletion, tenant deletion)
+        run: make try-app-protection
+
       - name: Debug on failure
         if: failure()
         run: |
@@ -124,6 +127,9 @@ jobs:
 
       - name: App composition (hello, staging then prod)
         run: make try-app
+
+      - name: App data protection (removed service, App deletion, tenant deletion)
+        run: make try-app-protection
 
       - name: Debug on failure
         if: failure()
