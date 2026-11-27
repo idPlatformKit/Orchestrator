@@ -15,6 +15,7 @@ resources:
   - function-app.yaml
   - tenant-native-resources-rbac.yaml
   - app-native-resources-rbac.yaml
+  - postgres-database-rbac.yaml
   - tenants-namespace.yaml
   - postgres-providerconfig.yaml
   - openbao-providerconfig.yaml

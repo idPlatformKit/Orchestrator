@@ -28,7 +28,7 @@ This is a **first prototype**: one kind of component (a Deployment, exposed over
 
 | From | Composed | Name | Notes |
 |---|---|---|---|
-| each service | `PostgresDatabase` | `<app>-<service>` | Its connection details in the Secret `<app>-<service>-conn`. The platform API, not its managed resources: the `PostgresDatabase` composition still decides how a database is provided |
+| each service | `PostgresDatabase` | `<app>-<service>` | Its connection details in the Secret `<app>-<service>-conn`. The platform API, not its managed resources: the `PostgresDatabase` composition still decides how a database is provided. `deletionPolicy: Retain` unless the service's deletion is confirmed (see [Protecting the data](#protecting-the-data)) |
 | each component | `Deployment` | `<app>-<component>` | Created once the services it uses are `Ready` (see below) |
 | each component with a `port` | `Service` | `<app>-<component>` | Probes on `/healthz` (liveness) and `/readyz` (readiness) |
 | each component with `expose` | `NetworkPolicy` | `<app>-<component>-from-gateway` | The tenant's namespaces only accept traffic from their own pods: this lets the Gateway's proxy in, on that port only |
@@ -94,6 +94,38 @@ status:
     web: { ready: true, replicas: 1 }
 ```
 
+## Protecting the data
+
+An `App`'s `app.yaml` lives in the app's repository, and the `App` itself in the instances repository, synced by Argo CD with pruning. A line removed from `services`, a renamed service, or a removed file must not be enough to drop a database. Deleting data is a separate, explicit step, reviewed like any other change: the annotation `platform.idplatformkit.io/delete-services` on the `App`, listing the services whose data may be deleted (comma separated), or `"*"` for all of them.
+
+```yaml
+metadata:
+  annotations:
+    platform.idplatformkit.io/delete-services: old   # first pull request
+# then remove `old` from spec.services, or the App: second pull request
+```
+
+Three layers, from the closest to the data:
+
+| What happens | Without the annotation | Listed in the annotation |
+|---|---|---|
+| The `PostgresDatabase` is deleted, whatever deletes it | the database stays in Postgres (`deletionPolicy: Retain`, see [postgres-database.md](postgres-database.md#deleting-keeps-the-database-deletionpolicy)) | the function sets `deletionPolicy: Delete`: deleting it drops the database |
+| A service is removed from `spec.services` (or its type changes) | the function keeps composing it, as is; it's listed in `status.retainedServices`, with a warning event | the function sets `Delete`, waits until it reached the database's object (`status.databaseManagementPolicies: ["*"]`), then stops composing it: the database is dropped |
+| The `App` is deleted (`kubectl delete`, Argo CD pruning) | refused by the Kyverno policy `app-data-protection`, which names the services to confirm | allowed once every service, current or retained, is listed |
+
+The refusal reads:
+
+```
+Policy app-data-protection failed: Deleting App hello would delete the data of its services (db, old):
+confirm it first with the annotation platform.idplatformkit.io/delete-services: "db,old" (or "*")
+```
+
+**Deleting the tenant, or one of its environments, is allowed**: the policy lets an `App` go when its namespace is being deleted, since that's already an explicit decision, and the data survives it anyway (`Retain`). The databases are left on the server, unmanaged: re-creating the tenant and the `App` adopts them again, data included, or a person drops them.
+
+**First attempt: the policy alone didn't protect anything.** The first version only had the function's retention and the policy on the `App`. Deleting the tenant while `hello` ran in staging (the policy then refused the `App`'s deletion even in a terminating namespace) left the namespace waiting with the policy's message, as intended, but the database was already dropped: the namespace controller deletes every kind of object in the namespace directly, the `PostgresDatabase` and provider-sql's `Database` too, not through the `App`. Protection has to live where the data is: hence `deletionPolicy: Retain` on `PostgresDatabase`.
+
+`make try-app-protection` (after `make try-app`) checks each case in Postgres itself.
+
 ## The contract every app follows
 
 The platform doesn't know languages or frameworks, only images. An image works with `App` if it:
@@ -118,6 +150,7 @@ The `App` composition is one step, `function-app`, a composition function writte
 ```sh
 make try-tenant        # the demo-team tenant, staging and prod
 make try-app           # hello in staging, then the same image in prod
+make try-app-protection   # removing a service, deleting the App, deleting the tenant
 ```
 
 `make try-app` deploys `examples/app/app.yaml` in `demo-team-staging`, waits for `Ready`, and calls the app over HTTPS through the Gateway: it must answer with its own database. It then promotes it to `demo-team-prod` with the same image digest and checks prod's rules.
@@ -159,11 +192,15 @@ On kind, with the GitOps flow tracking the branch and the function installed fro
 
 **A misleading RBAC message on errors.** When a `Deployment` can't be applied (refused by Kyverno, for example), Crossplane v2.4 adds a second message: `system:serviceaccount:crossplane-system:crossplane is not allowed to [get, list, watch, create, update, patch, delete] resource deployments/status.apps/v1`. Crossplane has the rights it needs on `deployments`. After a failed apply, it checks its own rights to explain the failure, and looks the resource up by kind in the API discovery: `deployments/status` has the kind `Deployment` too, and is the last match. The first message is the real one.
 
+**Kyverno can't read `App`s on its own.** The first apply of `app-data-protection` configured its webhook, but the policy stayed not ready: `Policy is not ready for reporting, missing permissions: get platform.idplatformkit.io/v1alpha1, Resource=apps`. Kyverno ships with rights on built-in kinds only. The ClusterRole `kyverno:read-platform-apps` (`platform/policies/kyverno-read-apps.yaml`) aggregates read access into its admission and reports controllers. Granted after the policy, it wasn't enough: the policy's status is only evaluated again when the policy changes (touching it with an annotation made it ready). Applied together with kustomize, the ClusterRole comes first.
+
 **Deleting then re-creating right away overlaps.** `kubectl delete` returns as soon as the `App` is gone, and its objects are deleted in the background. Applying it again within seconds raced with the deletion of the previous database: the old role couldn't be dropped while its database still existed, then the new one was created. It converged, but wait for the objects to be gone (or delete with `--cascade=foreground`) before re-creating.
 
 ## Limits
 
-- **Removing a service, or the `App`, drops its database**, with its data. Protecting data services on removal is part of #24 and not done yet.
+- **Retained databases aren't cleaned up**: after a tenant is removed on purpose, its databases stay on the server until a person drops them. Nothing lists them yet.
+- Confirming a service in the annotation while its namespace is being deleted falls back into [#14](https://github.com/idPlatformKit/Orchestrator/issues/14): `Delete` makes the database's object connect to Postgres, which it can't do from a terminating namespace. Confirm and delete `App`s before their tenant.
+- The annotation is on the `App` in the instances repository: whoever can merge there can confirm. There's no separate approval for deleting data yet ([#31](https://github.com/idPlatformKit/Orchestrator/issues/31) is about governance of that repository).
 - One kind of component (Deployment) and one kind of service (`postgres`). Not yet: workers scaled on queues, scheduled tasks (`CronJob`), the `migrate` Job, gRPC routes, `calls`, OpenBao secrets in `env`, sidecars.
 - Hostnames are `<app>-<namespace>`, one DNS label under the Gateway's wildcard certificate, at most 63 characters: the `App` is refused when it's longer.
 - The Gateway accepts routes from every namespace ([gateway.md](../gateway.md#limits)): a tenant could publish a route for another app's hostname.

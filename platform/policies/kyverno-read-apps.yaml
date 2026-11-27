@@ -1,0 +1,15 @@
+# Kyverno reads the resources its policies match, for its policy reports.
+# It ships with rights on built-in kinds only: app-data-protection matches
+# Apps, and stays not ready ("missing permissions: get ... apps") without
+# this. Read-only, aggregated into the admission and reports controllers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:read-platform-apps
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups: [platform.idplatformkit.io]
+    resources: [apps]
+    verbs: [get, list, watch]

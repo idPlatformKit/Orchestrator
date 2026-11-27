@@ -20,8 +20,118 @@ spec:
               fromFieldPath: spec.writeConnectionSecretToRef.name
               toFieldPath: name
         resources:
-          # The app role. provider-sql auto-generates its password and
-          # writes it to writeConnectionSecretToRef; we never see or set it.
+          # The role's password, generated once in the namespace by External
+          # Secrets Operator: nobody sees or sets it. An explicit password
+          # (passwordSecretRef) rather than provider-sql's own: provider-sql
+          # sets the role's password again whenever it differs from the one
+          # it published, so a retained role adopted again by a re-created
+          # PostgresDatabase gets working credentials. With a generated one,
+          # the adopted role's first update rotated the password, then
+          # failed before publishing it, and never rotated it again: the
+          # connection Secret had no password (docs/compositions/app.md).
+          - name: password-generator
+            base:
+              apiVersion: generators.external-secrets.io/v1alpha1
+              kind: Password
+              spec:
+                # Letters and digits only: safe in a connection URL.
+                length: 32
+                digits: 8
+                symbols: 0
+                allowRepeat: true
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+            # A generator has no status.
+            readinessChecks:
+              - type: None
+          - name: password
+            base:
+              apiVersion: external-secrets.io/v1
+              kind: ExternalSecret
+              spec:
+                refreshPolicy: CreatedOnce
+                target:
+                  creationPolicy: Owner
+                dataFrom:
+                  - sourceRef:
+                      generatorRef:
+                        apiVersion: generators.external-secrets.io/v1alpha1
+                        kind: Password
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.target.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.dataFrom[0].sourceRef.generatorRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+
+          # The role reads its password to connect, deletion included: the
+          # ExternalSecret, and the Secret it owns, must outlive it. Without
+          # this, they were deleted first, and the role stayed stuck on
+          # "cannot get password secret". Crossplane refuses to delete the
+          # ExternalSecret while the role exists.
+          - name: password-usage
+            base:
+              apiVersion: protection.crossplane.io/v1beta1
+              kind: Usage
+              spec:
+                replayDeletion: true
+                of:
+                  apiVersion: external-secrets.io/v1
+                  kind: ExternalSecret
+                  resourceRef: {}
+                by:
+                  apiVersion: postgresql.sql.m.crossplane.io/v1alpha1
+                  kind: Role
+                  resourceRef: {}
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.of.resourceRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.by.resourceRef.name
+
+          # The app role, with the password above. provider-sql writes the
+          # connection details to writeConnectionSecretToRef.
           - name: role
             base:
               apiVersion: postgresql.sql.m.crossplane.io/v1alpha1
@@ -30,10 +140,32 @@ spec:
                 forProvider:
                   privileges:
                     login: true
+                  passwordSecretRef:
+                    key: password
                 providerConfigRef:
                   kind: ClusterProviderConfig
                   name: postgres-local
             patches:
+              # Retain (the default) leaves out Delete: deleting this object,
+              # its PostgresDatabase or its namespace leaves the database in
+              # Postgres, without connecting to it (no #14 hang), and
+              # re-creating it under the same name adopts it again.
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.deletionPolicy
+                toFieldPath: spec.managementPolicies
+                transforms:
+                  - type: map
+                    map:
+                      Retain: [Observe, Create, Update, LateInitialize]
+                      Delete: ["*"]
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.passwordSecretRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-password"
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
@@ -87,6 +219,18 @@ spec:
                   kind: ClusterProviderConfig
                   name: postgres-local
             patches:
+              # Retain (the default) leaves out Delete: deleting this object,
+              # its PostgresDatabase or its namespace leaves the database in
+              # Postgres, without connecting to it (no #14 hang), and
+              # re-creating it under the same name adopts it again.
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.deletionPolicy
+                toFieldPath: spec.managementPolicies
+                transforms:
+                  - type: map
+                    map:
+                      Retain: [Observe, Create, Update, LateInitialize]
+                      Delete: ["*"]
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
                 toFieldPath: metadata.name
@@ -116,6 +260,11 @@ spec:
                   string:
                     fmt: "%s_%s"
                 toFieldPath: spec.forProvider.owner
+              # What the database's object actually allows, for callers that
+              # wait for Delete before deleting it (the App function).
+              - type: ToCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: status.databaseManagementPolicies
             connectionDetails:
               - name: dbname
                 type: FromFieldPath

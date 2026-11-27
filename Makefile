@@ -54,7 +54,7 @@ GITOPS_REVISION ?= main
 	external-secrets-install external-secrets-uninstall \
 	local-ca local-ca-secret local-ca-trust local-ca-untrust \
 	cert-manager-install envoy-gateway-install gateway-apply try-gateway try-ci-identity \
-	function-app-test render-app try-app
+	function-app-test render-app try-app try-app-protection
 
 # --- Guided install (see docs/install.md) ---
 
@@ -124,6 +124,7 @@ providers-apply:
 		-f providers/function-app.yaml \
 		-f providers/tenant-native-resources-rbac.yaml \
 		-f providers/app-native-resources-rbac.yaml \
+		-f providers/postgres-database-rbac.yaml \
 		-f providers/tenants-namespace.yaml
 	kubectl wait --for=condition=Healthy --timeout=180s \
 		provider.pkg.crossplane.io/provider-sql \
@@ -234,6 +235,7 @@ policies-apply:
 		validatingpolicy.policies.kyverno.io/tenant-require-resources \
 		validatingpolicy.policies.kyverno.io/prod-images-by-digest \
 		validatingpolicy.policies.kyverno.io/prod-min-replicas \
+		validatingpolicy.policies.kyverno.io/app-data-protection \
 		mutatingpolicy.policies.kyverno.io/tenant-owner-label
 
 # Needs the demo-team tenant from try-tenant. Server-side dry runs only.
@@ -542,6 +544,11 @@ render-app:
 
 try-app:
 	./scripts/try-app.sh
+
+# After try-app: a removed service is kept until confirmed, and the App can't
+# be deleted until its services are. Deletes hello in staging at the end.
+try-app-protection:
+	./scripts/try-app-protection.sh
 
 # Read-only ServiceAccount for the portal's Kubernetes plugin
 # (platform/backstage-reader/). The GitOps flow installs it with Argo CD.

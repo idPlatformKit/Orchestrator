@@ -1,0 +1,18 @@
+# Lets Crossplane manage what the PostgresDatabase composition composes
+# besides provider-sql's objects: the External Secrets Operator Password
+# generator and ExternalSecret that generate the role's password, once, in
+# the database's namespace. Aggregated into Crossplane's own ClusterRole,
+# like crossplane-tenant-native-resources.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-postgres-database-resources
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  - apiGroups: ["generators.external-secrets.io"]
+    resources: ["passwords"]
+    verbs: ["*"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["*"]

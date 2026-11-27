@@ -1,0 +1,53 @@
+# An App can't be deleted while it has services holding data, unless the
+# team confirmed it: every service, current or retained, is listed in the
+# annotation platform.idplatformkit.io/delete-services (comma separated), or
+# the annotation is "*". Deleting the App would delete its databases: this
+# makes it a deliberate, reviewed change (one pull request adds the
+# annotation, the next removes the App), not a side effect of a removed file
+# and Argo CD's pruning. Removing a service from an App is protected by the
+# App's function the same way.
+#
+# Deleting the App's namespace (its tenant, or one of its environments,
+# removed) is allowed: that's already an explicit decision, and the data
+# survives it, since a PostgresDatabase keeps its database unless its
+# deletionPolicy is Delete. The App's function only sets Delete on the
+# services confirmed in the annotation. See docs/compositions/app.md.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: app-data-protection
+  annotations:
+    policies.kyverno.io/title: Confirm before deleting an App's data
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [platform.idplatformkit.io]
+        apiVersions: [v1alpha1]
+        operations: [DELETE]
+        resources: [apps]
+  variables:
+    - name: annotation
+      expression: >-
+        has(oldObject.metadata.annotations) &&
+        'platform.idplatformkit.io/delete-services' in oldObject.metadata.annotations ?
+        oldObject.metadata.annotations['platform.idplatformkit.io/delete-services'] : ''
+    - name: confirmed
+      expression: variables.annotation.split(',').map(s, s.trim())
+    - name: services
+      expression: >-
+        (has(oldObject.spec.services) ? oldObject.spec.services.map(k, k) : []) +
+        (has(oldObject.status) && has(oldObject.status.retainedServices) ?
+          oldObject.status.retainedServices.map(k, k) : [])
+    - name: unconfirmed
+      expression: >-
+        '*' in variables.confirmed ? [] :
+        variables.services.filter(s, !(s in variables.confirmed))
+  validations:
+    - expression: >-
+        size(variables.unconfirmed) == 0 ||
+        has(namespaceObject.metadata.deletionTimestamp)
+      messageExpression: >-
+        'Deleting App ' + oldObject.metadata.name + ' would delete the data of its services (' +
+        variables.unconfirmed.join(', ') + '): confirm it first with the annotation ' +
+        'platform.idplatformkit.io/delete-services: "' + variables.unconfirmed.join(',') + '" (or "*")'
